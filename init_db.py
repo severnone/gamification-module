@@ -8,6 +8,7 @@ from .models import (
     Base, FoxBoost, FoxGameHistory, FoxPlayer, FoxPrize,
     FoxDeal, FoxQuest, FoxCasinoSession, FoxCasinoGame, FoxCasinoProfile
 )
+from .jackpot import FoxJackpot, FoxJackpotWin
 
 
 async def init_gamification_db():
@@ -27,6 +28,8 @@ async def init_gamification_db():
                 FoxCasinoSession.__table__,
                 FoxCasinoGame.__table__,
                 FoxCasinoProfile.__table__,
+                FoxJackpot.__table__,
+                FoxJackpotWin.__table__,
             ]
         )
     logger.info("[Gamification] Таблицы БД созданы/проверены")
