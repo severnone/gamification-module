@@ -182,10 +182,27 @@ async def run_game(callback: CallbackQuery, session: AsyncSession, game_type: st
     )
     
     if not result["success"]:
-        await msg.edit_text(
-            f"❌ <b>Ошибка:</b> {result['error']}",
-            reply_markup=build_game_select_kb()
-        )
+        # Понятное сообщение если попытки закончились
+        if result["error"] == "no_spins":
+            error_text = """❌ <b>Попытки закончились!</b>
+
+🎫 У тебя нет бесплатных попыток.
+
+<b>Как получить:</b>
+• ⏰ Бесплатная попытка каждый день
+• 🧰 Выполняй задания
+• ⭐ Купи в улучшениях (30 🪙)
+"""
+            builder = InlineKeyboardBuilder()
+            builder.row(InlineKeyboardButton(text="⭐ Купить попытку", callback_data="fox_upgrades"))
+            builder.row(InlineKeyboardButton(text="🧰 Задания", callback_data="fox_quests"))
+            builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+            await msg.edit_text(error_text, reply_markup=builder.as_markup())
+        else:
+            await msg.edit_text(
+                f"❌ <b>Ошибка:</b> {result['error']}",
+                reply_markup=build_game_select_kb()
+            )
         return
     
     text = format_prize_message(
@@ -982,6 +999,7 @@ async def handle_buy_spin(callback: CallbackQuery, session: AsyncSession):
     
     cost = 30
     logger.info(f"[Gamification] Покупка попытки от {callback.from_user.id}")
+    await callback.answer()
     
     from .db import update_player_coins
     
@@ -996,10 +1014,22 @@ async def handle_buy_spin(callback: CallbackQuery, session: AsyncSession):
     player.free_spins += 1
     await session.commit()
     
-    await callback.answer("✅ +1 бесплатная попытка!", show_alert=True)
+    # Показываем экран подтверждения
+    text = f"""✅ <b>Попытка куплена!</b>
+
+🎫 Списано: <b>-{cost}</b> 🪙
+🎫 Попыток: <b>{player.free_spins}</b>
+🪙 Осталось: <b>{player.coins - cost}</b> 🪙
+
+<i>Иди и испытай удачу!</i>
+"""
     
-    # Обновляем экран
-    await handle_upgrades(callback, session)
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🎰 Играть!", callback_data="fox_try_luck"))
+    builder.row(InlineKeyboardButton(text="⭐ Улучшения", callback_data="fox_upgrades"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
 
 
 # ==================== ЛИСЬЕ КАЗИНО (реальные ставки!) ====================

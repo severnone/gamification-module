@@ -204,13 +204,17 @@ async def add_game_history(
     boost_used: bool = False,
 ) -> FoxGameHistory:
     """Записать игру в историю"""
+    # Проверяем, это выигрыш или проигрыш
+    # Выигрыш - только если prize_type не пустой и не "empty"/"nothing"/"lose"
+    is_win = prize_type and prize_type not in ("empty", "nothing", "lose", None)
+    
     # Обновляем статистику игрока
     await session.execute(
         update(FoxPlayer)
         .where(FoxPlayer.tg_id == tg_id)
         .values(
             total_games=FoxPlayer.total_games + 1,
-            total_wins=FoxPlayer.total_wins + (1 if prize_type else 0),
+            total_wins=FoxPlayer.total_wins + (1 if is_win else 0),
         )
     )
     
