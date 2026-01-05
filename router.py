@@ -627,6 +627,7 @@ async def handle_casino_bet_select(callback: CallbackQuery, session: AsyncSessio
 async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
     """Игра в казино — СПИСАНИЕ РЕАЛЬНЫХ ДЕНЕГ!"""
     import asyncio
+    import random
     
     await ensure_db()
     
@@ -636,7 +637,7 @@ async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
     
     from .casino import (
         play_casino, can_play_casino,
-        ROLLING, RESULT_LOSE, RESULT_WIN_X2, RESULT_WIN_X3
+        RESULT_LOSE, RESULT_WIN_X2, RESULT_WIN_X3
     )
     
     # Финальная проверка
@@ -651,29 +652,63 @@ async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
     except Exception:
         pass
     
-    # Анимация
-    msg = await callback.message.answer(ROLLING.format(bet=bet))
+    # === ДРАМАТИЧНАЯ АНИМАЦИЯ ===
     
-    # Пауза 2-3 секунды для напряжения
-    await asyncio.sleep(2.0)
-    
-    await msg.edit_text(
-        f"🦊 <b>ЛИСЬЕ КАЗИНО</b>\n\n"
-        f"Ставка: <b>{bet} ₽</b>\n\n"
-        f"🎲 <i>Кость катится...</i>"
+    # Фаза 1: Ставка принята
+    msg = await callback.message.answer(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"🎲 <i>Лиса берёт кость...</i>"
     )
-    
     await asyncio.sleep(1.5)
     
+    # Фаза 2: Бросок
     await msg.edit_text(
-        f"🦊 <b>ЛИСЬЕ КАЗИНО</b>\n\n"
-        f"Ставка: <b>{bet} ₽</b>\n\n"
-        f"🦊 <i>Лиса смотрит на результат...</i>"
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"🎲 <i>Лиса бросает!</i>\n\n"
+        f"⚀ ⚁ ⚂ ⚃ ⚄ ⚅"
     )
+    await asyncio.sleep(1.2)
     
+    # Фаза 3: Кость катится
+    dice_faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"]
+    for i in range(4):
+        dice = random.choice(dice_faces)
+        await msg.edit_text(
+            f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+            f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+            f"🎲 Кость катится...\n\n"
+            f"   [ {dice} ]"
+        )
+        await asyncio.sleep(0.4)
+    
+    # Фаза 4: Замедление
+    await msg.edit_text(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"🎲 <i>Кость останавливается...</i>\n\n"
+        f"   [ ❓ ]"
+    )
+    await asyncio.sleep(1.5)
+    
+    # Фаза 5: Лиса смотрит
+    await msg.edit_text(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"🦊 <i>Лиса смотрит на кость...</i>"
+    )
+    await asyncio.sleep(1.2)
+    
+    # Фаза 6: Напряжение
+    await msg.edit_text(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"🦊 <i>...</i>"
+    )
     await asyncio.sleep(1.0)
     
-    # ИГРА!
+    # === ИГРА! ===
     result = await play_casino(session, callback.from_user.id, bet)
     
     # Показываем результат
