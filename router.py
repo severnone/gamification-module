@@ -48,25 +48,12 @@ def build_game_select_kb() -> InlineKeyboardMarkup:
     
     builder.row(
         InlineKeyboardButton(text="🎰 Слоты", callback_data="fox_play_slots"),
-        InlineKeyboardButton(text="📦 Сундук", callback_data="fox_play_chest"),
-    )
-    builder.row(
         InlineKeyboardButton(text="🎡 Колесо", callback_data="fox_play_wheel"),
     )
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
-    return builder.as_markup()
-
-
-def build_chest_select_kb() -> InlineKeyboardMarkup:
-    """Клавиатура выбора сундука"""
-    builder = InlineKeyboardBuilder()
-    
     builder.row(
-        InlineKeyboardButton(text="📦 1", callback_data="fox_chest_1"),
-        InlineKeyboardButton(text="📦 2", callback_data="fox_chest_2"),
-        InlineKeyboardButton(text="📦 3", callback_data="fox_chest_3"),
+        InlineKeyboardButton(text="🦊 Сделка с лисой", callback_data="fox_deal"),
     )
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     return builder.as_markup()
 
 
@@ -77,7 +64,6 @@ def build_after_game_kb(game_type: str = "slots") -> InlineKeyboardMarkup:
     # Кнопка повторить ту же игру
     game_buttons = {
         "slots": ("🎰 Ещё раз!", "fox_play_slots"),
-        "chest": ("📦 Ещё раз!", "fox_play_chest"),
         "wheel": ("🎡 Ещё раз!", "fox_play_wheel"),
     }
     btn_text, callback = game_buttons.get(game_type, ("🎰 Ещё раз!", "fox_play_slots"))
@@ -145,16 +131,16 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
     
     text = f"""🎰 <b>Испытать удачу</b>
 
-🦊 Выбери игру, в которую хочешь сыграть!
+🦊 Выбери игру!
 {test_mode_text}
-🎫 Бесплатных попыток: <b>{player.free_spins}</b>
+🎫 Попыток: <b>{player.free_spins}</b>
 🪙 Лискоинов: <b>{player.coins}</b>
 
-<b>🎰 Слоты</b> — крути барабаны, собирай комбинации!
-<b>📦 Сундук</b> — открой сундук Лисы!
-<b>🎡 Колесо</b> — крути колесо удачи!
+<b>🎰 Слоты</b> — крути барабаны!
+<b>🎡 Колесо</b> — испытай удачу!
+<b>🦊 Сделка</b> — рискни своими монетами!
 
-<b>Призы:</b> 3 одинаковых = ДЖЕКПОТ 🦊
+<i>3 одинаковых = ДЖЕКПОТ!</i>
 """
     
     await edit_or_send_message(
@@ -221,42 +207,145 @@ async def handle_play_slots(callback: CallbackQuery, session: AsyncSession):
     await run_game(callback, session, "slots")
 
 
-@router.callback_query(F.data == "fox_play_chest")
-async def handle_play_chest(callback: CallbackQuery, session: AsyncSession):
-    """Выбор сундука — интерактивный экран"""
+@router.callback_query(F.data == "fox_deal")
+async def handle_deal_menu(callback: CallbackQuery, session: AsyncSession):
+    """Меню сделки с лисой"""
     await ensure_db()
-    logger.info(f"[Gamification] Выбор сундука от {callback.from_user.id}")
+    logger.info(f"[Gamification] Сделка с лисой от {callback.from_user.id}")
     await callback.answer()
     
-    text = """📦 <b>СУНДУКИ ЛИСЫ</b>
+    from .deal import get_greeting, MIN_COINS_STAKE, MAX_COINS_STAKE
+    from .db import get_deal_stats, can_make_deal
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    stats = await get_deal_stats(session, callback.from_user.id)
+    can_deal, reason = await can_make_deal(session, callback.from_user.id)
+    
+    greeting = get_greeting(stats)
+    
+    # Проверяем, есть ли что ставить
+    has_coins = player.coins >= MIN_COINS_STAKE
+    
+    if not can_deal:
+        text = f"""🦊 <b>СДЕЛКА С ЛИСОЙ</b>
 
-🦊 Лиса спрятала приз в один из сундуков!
+⏰ {reason}
 
-  📦      📦      📦
-   1        2        3
+<i>Лиса отдыхает. Приходи позже.</i>
+"""
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
+        await edit_or_send_message(callback.message, text, builder.as_markup())
+        return
+    
+    if not has_coins:
+        text = f"""🦊 <b>СДЕЛКА С ЛИСОЙ</b>
 
-<b>Выбери сундук, который хочешь открыть!</b>
+{greeting}
 
-<i>В одном из них — награда...</i>
+❌ У тебя нет ничего для ставки.
+Минимум: <b>{MIN_COINS_STAKE}</b> Лискоинов
+
+<i>Сначала заработай, потом рискуй.</i>
+"""
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
+        await edit_or_send_message(callback.message, text, builder.as_markup())
+        return
+    
+    text = f"""🦊 <b>СДЕЛКА С ЛИСОЙ</b>
+
+{greeting}
+
+💰 Твои Лискоины: <b>{player.coins}</b>
+
+<b>Выбери ставку:</b>
+Минимум: {MIN_COINS_STAKE} 🪙
+Максимум: {MAX_COINS_STAKE} 🪙
+
+<i>⚠️ Выиграешь — удвоишь (или утроишь)
+Проиграешь — потеряешь всё</i>
 """
     
-    await edit_or_send_message(
-        target_message=callback.message,
-        text=text,
-        reply_markup=build_chest_select_kb(),
-    )
+    # Кнопки выбора ставки
+    builder = InlineKeyboardBuilder()
+    stakes = [20, 50, 100, 200]
+    row = []
+    for stake in stakes:
+        if player.coins >= stake:
+            row.append(InlineKeyboardButton(text=f"{stake} 🪙", callback_data=f"fox_deal_stake_{stake}"))
+    if row:
+        builder.row(*row[:2])
+        if len(row) > 2:
+            builder.row(*row[2:])
+    
+    builder.row(InlineKeyboardButton(text="🚪 Уйти", callback_data="fox_deal_decline"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
 
 
-@router.callback_query(F.data.startswith("fox_chest_"))
-async def handle_chest_choice(callback: CallbackQuery, session: AsyncSession):
-    """Открытие выбранного сундука"""
+@router.callback_query(F.data == "fox_deal_decline")
+async def handle_deal_decline(callback: CallbackQuery, session: AsyncSession):
+    """Отказ от сделки"""
+    import random
+    from .deal import DECLINE_COMMENTS
+    
+    await callback.answer()
+    comment = random.choice(DECLINE_COMMENTS)
+    
+    text = f"""{comment}"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🎮 К играм", callback_data="fox_try_luck"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("fox_deal_stake_"))
+async def handle_deal_confirm(callback: CallbackQuery, session: AsyncSession):
+    """Подтверждение ставки и сделка"""
     await ensure_db()
     
-    # Получаем номер выбранного сундука (1, 2, 3)
-    chest_num = int(callback.data.split("_")[-1])
-    chosen_chest = chest_num - 1  # Индекс 0, 1, 2
+    stake = int(callback.data.split("_")[-1])
+    logger.info(f"[Gamification] Сделка: ставка {stake} от {callback.from_user.id}")
+    await callback.answer()
     
-    logger.info(f"[Gamification] Открытие сундука {chest_num} от {callback.from_user.id}")
+    player = await get_or_create_player(session, callback.from_user.id)
+    
+    # Проверяем, хватает ли монет
+    if player.coins < stake:
+        await callback.answer("❌ Недостаточно Лискоинов!", show_alert=True)
+        return
+    
+    # Показываем экран подтверждения
+    text = f"""🦊 <b>СДЕЛКА С ЛИСОЙ</b>
+
+Ты ставишь: <b>{stake}</b> 🪙
+
+<b>Заключить сделку?</b>
+
+⚠️ <i>Это решение необратимо.</i>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🤝 Заключить сделку", callback_data=f"fox_deal_confirm_{stake}"))
+    builder.row(InlineKeyboardButton(text="🚪 Передумал", callback_data="fox_deal"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("fox_deal_confirm_"))
+async def handle_deal_execute(callback: CallbackQuery, session: AsyncSession):
+    """Выполнение сделки"""
+    import asyncio
+    from .deal import execute_deal
+    
+    await ensure_db()
+    
+    stake = int(callback.data.split("_")[-1])
+    logger.info(f"[Gamification] Выполнение сделки: {stake} от {callback.from_user.id}")
     await callback.answer()
     
     # Удаляем старое сообщение
@@ -265,40 +354,62 @@ async def handle_chest_choice(callback: CallbackQuery, session: AsyncSession):
     except Exception:
         pass
     
-    # Начальное сообщение
+    # Анимация: Лиса думает
     msg = await callback.message.answer(
-        "📦 <b>СУНДУКИ ЛИСЫ</b>\n\n"
-        f"🎯 Ты выбрал сундук <b>№{chest_num}</b>!\n\n"
-        "<i>Открываем...</i>"
+        "🦊 <b>СДЕЛКА С ЛИСОЙ</b>\n\n"
+        f"Ставка: <b>{stake}</b> 🪙\n\n"
+        "🤔 <i>Лиса думает...</i>"
     )
     
-    # Запускаем игру с выбранным сундуком
-    result = await play_game(
-        session, 
-        callback.from_user.id, 
-        use_coins=False,
-        message=msg,
-        game_type="chest",
-        test_mode=TEST_MODE,
-        chosen_chest=chosen_chest,
+    await asyncio.sleep(1.5)
+    
+    await msg.edit_text(
+        "🦊 <b>СДЕЛКА С ЛИСОЙ</b>\n\n"
+        f"Ставка: <b>{stake}</b> 🪙\n\n"
+        "🦊 <i>Лиса смотрит тебе в глаза...</i>"
     )
     
-    if not result["success"]:
-        await msg.edit_text(
-            f"❌ <b>Ошибка:</b> {result['error']}",
-            reply_markup=build_game_select_kb()
-        )
-        return
+    await asyncio.sleep(1.0)
     
-    text = format_prize_message(
-        result["game_type"],
-        result["prize"],
-        result["symbols"],
-        result["coins_spent"],
-        result["new_balance"],
-    )
+    # Выполняем сделку
+    result = await execute_deal(session, callback.from_user.id, "coins", stake)
     
-    await msg.edit_text(text, reply_markup=build_after_game_kb("chest"))
+    await asyncio.sleep(0.5)
+    
+    # Показываем результат
+    player = await get_or_create_player(session, callback.from_user.id)
+    
+    if result.won:
+        text = f"""🦊 <b>СДЕЛКА С ЛИСОЙ</b>
+
+✅ <b>ВЫИГРЫШ!</b>
+
+Ставка: {stake} 🪙
+Множитель: <b>×{result.multiplier:.0f}</b>
+Выигрыш: <b>+{result.result_value - stake}</b> 🪙
+
+💬 <i>"{result.fox_comment}"</i>
+
+🪙 Баланс: <b>{player.coins}</b> Лискоинов
+"""
+    else:
+        text = f"""🦊 <b>СДЕЛКА С ЛИСОЙ</b>
+
+❌ <b>ПРОИГРЫШ</b>
+
+Ставка: {stake} 🪙
+Потеряно: <b>-{stake}</b> 🪙
+
+💬 <i>"{result.fox_comment}"</i>
+
+🪙 Баланс: <b>{player.coins}</b> Лискоинов
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🎮 К играм", callback_data="fox_try_luck"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await msg.edit_text(text, reply_markup=builder.as_markup())
 
 
 @router.callback_query(F.data == "fox_play_wheel")

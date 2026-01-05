@@ -264,3 +264,115 @@ async def use_boost(session: AsyncSession, boost_id: int) -> bool:
     success = result.scalar_one_or_none() is not None
     await session.commit()
     return success
+
+
+# ==================== СДЕЛКИ С ЛИСОЙ ====================
+
+from .models import FoxDeal
+
+
+async def get_last_deal(session: AsyncSession, tg_id: int) -> FoxDeal | None:
+    """Получить последнюю сделку пользователя."""
+    result = await session.execute(
+        select(FoxDeal)
+        .where(FoxDeal.tg_id == tg_id)
+        .order_by(FoxDeal.created_at.desc())
+        .limit(1)
+    )
+    return result.scalar_one_or_none()
+
+
+async def get_deal_stats(session: AsyncSession, tg_id: int) -> dict:
+    """Получить статистику сделок: количество, серия побед/поражений."""
+    result = await session.execute(
+        select(FoxDeal)
+        .where(FoxDeal.tg_id == tg_id)
+        .order_by(FoxDeal.created_at.desc())
+        .limit(10)  # Последние 10 сделок
+    )
+    deals = list(result.scalars().all())
+    
+    if not deals:
+        return {
+            "total": 0,
+            "wins": 0,
+            "losses": 0,
+            "win_streak": 0,
+            "loss_streak": 0,
+            "days_since_last": None,
+        }
+    
+    wins = sum(1 for d in deals if d.won)
+    losses = len(deals) - wins
+    
+    # Считаем текущую серию
+    win_streak = 0
+    loss_streak = 0
+    for d in deals:
+        if d.won:
+            if loss_streak == 0:
+                win_streak += 1
+            else:
+                break
+        else:
+            if win_streak == 0:
+                loss_streak += 1
+            else:
+                break
+    
+    # Дней с последней сделки
+    last_deal = deals[0]
+    days_since = (datetime.utcnow() - last_deal.created_at).days
+    
+    return {
+        "total": len(deals),
+        "wins": wins,
+        "losses": losses,
+        "win_streak": win_streak,
+        "loss_streak": loss_streak,
+        "days_since_last": days_since,
+    }
+
+
+async def can_make_deal(session: AsyncSession, tg_id: int) -> tuple[bool, str | None]:
+    """Проверить, может ли игрок заключить сделку (1 раз в 24 часа)."""
+    last_deal = await get_last_deal(session, tg_id)
+    
+    if last_deal is None:
+        return True, None
+    
+    hours_since = (datetime.utcnow() - last_deal.created_at).total_seconds() / 3600
+    
+    if hours_since < 24:
+        hours_left = int(24 - hours_since)
+        return False, f"Следующая сделка через {hours_left}ч"
+    
+    return True, None
+
+
+async def create_deal(
+    session: AsyncSession,
+    tg_id: int,
+    stake_type: str,
+    stake_value: int,
+    won: bool,
+    multiplier: float,
+    result_value: int,
+    chance_percent: int,
+    fox_comment: str,
+) -> FoxDeal:
+    """Создать запись о сделке."""
+    deal = FoxDeal(
+        tg_id=tg_id,
+        stake_type=stake_type,
+        stake_value=stake_value,
+        won=won,
+        multiplier=multiplier,
+        result_value=result_value,
+        chance_percent=chance_percent,
+        fox_comment=fox_comment,
+    )
+    session.add(deal)
+    await session.commit()
+    await session.refresh(deal)
+    return deal

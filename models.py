@@ -112,3 +112,28 @@ class FoxBoost(Base):
     
     expires_at = Column(DateTime, nullable=True)  # Может истекать по времени
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FoxDeal(Base):
+    """История сделок с лисой"""
+    __tablename__ = "fox_deals"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tg_id = Column(BigInteger, ForeignKey("fox_players.tg_id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Ставка
+    stake_type = Column(String(50), nullable=False)  # "coins", "vpn_days", "spin"
+    stake_value = Column(Integer, nullable=False)  # Сколько поставил
+    
+    # Результат
+    won = Column(Boolean, nullable=False)  # Выиграл или проиграл
+    multiplier = Column(Float, default=2.0)  # Множитель (x2, x3)
+    result_value = Column(Integer, nullable=False)  # Итоговый результат (0 если проиграл)
+    
+    # Динамический шанс на момент сделки
+    chance_percent = Column(Integer, nullable=False)  # Шанс победы в %
+    
+    # Объяснение от лисы
+    fox_comment = Column(String(255), nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
