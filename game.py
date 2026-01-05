@@ -463,6 +463,22 @@ async def play_game(
         boost_used=boost_percent > 0,
     )
     
+    # Обновляем квесты
+    try:
+        from .quests import update_quest_progress, QuestType
+        
+        # Квест "сыграть игру"
+        await update_quest_progress(session, tg_id, QuestType.PLAY_GAME)
+        
+        # Квест "сыграть 3 игры"
+        await update_quest_progress(session, tg_id, QuestType.PLAY_3_GAMES)
+        
+        # Квест "выиграть" (если не пустышка)
+        if prize.prize_type != "empty":
+            await update_quest_progress(session, tg_id, QuestType.WIN_GAME)
+    except Exception as e:
+        logger.warning(f"[Gamification] Ошибка обновления квестов: {e}")
+    
     logger.info(
         f"[Gamification] Игра {tg_id}: {game_type} [{symbols}] -> {prize.rarity} {prize.prize_type}:{prize.value}"
     )

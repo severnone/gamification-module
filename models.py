@@ -155,3 +155,27 @@ class FoxCasinoGame(Base):
     payout = Column(Float, nullable=False)  # Выплата
     
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FoxQuest(Base):
+    """Ежедневные задания"""
+    __tablename__ = "fox_quests"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tg_id = Column(BigInteger, ForeignKey("fox_players.tg_id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Тип квеста
+    quest_type = Column(String(50), nullable=False)
+    
+    # Прогресс
+    progress = Column(Integer, default=0, nullable=False)
+    target = Column(Integer, default=1, nullable=False)  # Сколько нужно для выполнения
+    
+    # Статус
+    is_completed = Column(Boolean, default=False, nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+    
+    is_claimed = Column(Boolean, default=False, nullable=False)  # Забрана ли награда
+    claimed_at = Column(DateTime, nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)

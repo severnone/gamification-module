@@ -433,22 +433,117 @@ async def handle_quests(callback: CallbackQuery, session: AsyncSession):
     await ensure_db()
     logger.info(f"[Gamification] fox_quests от {callback.from_user.id}")
     
+    from .quests import (
+        init_daily_quests, get_player_quests, format_quest_status,
+        QUEST_DEFINITIONS, QuestType, update_quest_progress
+    )
+    
     player = await get_or_create_player(session, callback.from_user.id)
     
-    text = f"""🧰 <b>Задания</b>
+    # Инициализируем ежедневные квесты (если ещё нет)
+    await init_daily_quests(session, callback.from_user.id)
+    
+    # Отмечаем ежедневный вход
+    await update_quest_progress(session, callback.from_user.id, QuestType.DAILY_LOGIN)
+    
+    # Получаем квесты
+    quests = await get_player_quests(session, callback.from_user.id)
+    
+    # Формируем список
+    quests_text = ""
+    claimable_quests = []
+    
+    for quest in quests:
+        quest_info = QUEST_DEFINITIONS.get(QuestType(quest.quest_type))
+        if not quest_info:
+            continue
+        
+        if quest.is_claimed:
+            status = "✅"
+            reward = "<s>" + quest_info.reward_description + "</s>"
+        elif quest.is_completed:
+            status = "🎁"
+            reward = f"<b>{quest_info.reward_description}</b>"
+            claimable_quests.append(quest)
+        else:
+            status = "⏳"
+            progress = f" ({quest.progress}/{quest.target})" if quest.target > 1 else ""
+            reward = quest_info.reward_description
+        
+        quests_text += f"{status} {quest_info.emoji} {quest_info.title}{progress if not quest.is_completed else ''} — {reward}\n"
+    
+    text = f"""🧰 <b>Ежедневные задания</b>
 
 🔥 Серия входов: <b>{player.login_streak} дней</b>
 
-🦊 Лиса готовит для тебя задания...
-
-<i>Эта функция скоро будет доступна!</i>
+{quests_text}
+<i>Задания обновляются каждый день!</i>
 """
+    
+    builder = InlineKeyboardBuilder()
+    
+    # Кнопки для получения наград
+    if claimable_quests:
+        builder.row(InlineKeyboardButton(
+            text=f"🎁 Забрать награды ({len(claimable_quests)})",
+            callback_data="fox_claim_quests"
+        ))
+    
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
     await edit_or_send_message(
         target_message=callback.message,
         text=text,
-        reply_markup=build_back_to_den_kb(),
+        reply_markup=builder.as_markup(),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "fox_claim_quests")
+async def handle_claim_quests(callback: CallbackQuery, session: AsyncSession):
+    """Забрать награды за выполненные квесты"""
+    await ensure_db()
+    logger.info(f"[Gamification] Забор наград от {callback.from_user.id}")
+    await callback.answer()
+    
+    from .quests import get_player_quests, claim_quest_reward, QUEST_DEFINITIONS, QuestType
+    
+    quests = await get_player_quests(session, callback.from_user.id)
+    
+    total_reward = 0
+    claimed_count = 0
+    
+    for quest in quests:
+        if quest.is_completed and not quest.is_claimed:
+            reward = await claim_quest_reward(session, callback.from_user.id, quest.id)
+            if reward:
+                total_reward += reward
+                claimed_count += 1
+    
+    if claimed_count > 0:
+        player = await get_or_create_player(session, callback.from_user.id)
+        text = f"""🎁 <b>Награды получены!</b>
+
+✅ Выполнено заданий: <b>{claimed_count}</b>
+🪙 Получено: <b>+{total_reward} Лискоинов</b>
+
+💰 Твой баланс: <b>{player.coins}</b> 🪙
+
+🦊 <i>Возвращайся завтра за новыми заданиями!</i>
+"""
+    else:
+        text = """🧰 <b>Задания</b>
+
+❌ Нет наград для получения.
+
+<i>Выполни задания, чтобы получить награды!</i>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🧰 К заданиям", callback_data="fox_quests"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
 
 
 @router.callback_query(F.data == "fox_my_prizes")
