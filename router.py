@@ -95,7 +95,6 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     logger.info(f"[Gamification] Открытие Логова Лисы для {callback.from_user.id}")
     
     from .events import format_events_text
-    from .vip import is_vip, get_vip_days_left
     
     player = await get_or_create_player(session, callback.from_user.id)
     await check_and_reset_daily_spin(session, callback.from_user.id)
@@ -103,11 +102,6 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     
     free_spin_text = "✅ Есть" if player.free_spins > 0 else "❌ Нет"
     paid_spins_text = f" + 🛒 {player.paid_spins}" if player.paid_spins > 0 else ""
-    
-    # VIP статус
-    has_vip = await is_vip(session, callback.from_user.id)
-    vip_days = await get_vip_days_left(session, callback.from_user.id)
-    vip_text = f"💎 VIP: <b>{vip_days} дн.</b>\n" if has_vip else ""
     
     # Джекпот
     from .jackpot import get_jackpot_pool
@@ -118,7 +112,7 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     
     text = f"""🦊 <b>Добро пожаловать в Логово Лисы!</b>
 
-{vip_text}🪙 Лискоины: <b>{player.coins}</b>
+🪙 Лискоины: <b>{player.coins}</b>
 🎫 Ежедневная: <b>{free_spin_text}</b>{paid_spins_text}
 🎰 Джекпот: <b>{jackpot_pool}</b> 🪙
 
