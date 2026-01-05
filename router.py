@@ -7,12 +7,12 @@ from handlers.utils import edit_or_send_message
 from hooks.hooks import register_hook
 from logger import logger
 
-from .db import get_active_prizes, get_or_create_player
+from .db import get_active_prizes, get_or_create_player, check_and_reset_daily_spin
+from .game import SPIN_COST_COINS, format_prize_message, play_game
 from .keyboards import build_fox_den_menu
 from .texts import (
     BTN_BACK,
     FOX_DEN_BUTTON,
-    FOX_DEN_WELCOME,
 )
 
 
@@ -38,6 +38,36 @@ def build_back_to_den_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
+def build_try_luck_kb(has_free_spin: bool, coins: int) -> InlineKeyboardMarkup:
+    """Клавиатура для игры"""
+    builder = InlineKeyboardBuilder()
+    
+    if has_free_spin:
+        builder.row(InlineKeyboardButton(
+            text="🎰 Испытать удачу (бесплатно)",
+            callback_data="fox_spin_free"
+        ))
+    else:
+        can_afford = coins >= SPIN_COST_COINS
+        btn_text = f"🎰 Испытать удачу ({SPIN_COST_COINS} 🪙)"
+        if can_afford:
+            builder.row(InlineKeyboardButton(text=btn_text, callback_data="fox_spin_coins"))
+        else:
+            builder.row(InlineKeyboardButton(text=f"❌ {btn_text}", callback_data="fox_no_coins"))
+    
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    return builder.as_markup()
+
+
+def build_after_game_kb() -> InlineKeyboardMarkup:
+    """Клавиатура после игры"""
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🎰 Ещё раз!", callback_data="fox_try_luck"))
+    builder.row(InlineKeyboardButton(text="🎁 Мои призы", callback_data="fox_my_prizes"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    return builder.as_markup()
+
+
 # Хук для добавления кнопки в меню профиля
 @register_hook("profile_menu")
 async def add_fox_den_button(**kwargs):
@@ -56,16 +86,21 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     await ensure_db()
     logger.info(f"[Gamification] Открытие Логова Лисы для {callback.from_user.id}")
     
-    # Получаем или создаём игрока
     player = await get_or_create_player(session, callback.from_user.id)
+    await check_and_reset_daily_spin(session, callback.from_user.id)
+    player = await get_or_create_player(session, callback.from_user.id)
+    
+    free_spin_text = "✅ Доступна" if player.free_spins > 0 else "❌ Использована"
     
     text = f"""🦊 <b>Добро пожаловать в Логово Лисы!</b>
 
 🪙 Лискоины: <b>{player.coins}</b>
+🎫 Бесплатная попытка: <b>{free_spin_text}</b>
+
 🎮 Игр сыграно: <b>{player.total_games}</b>
 🏆 Выигрышей: <b>{player.total_wins}</b>
 
-Испытай удачу, выполняй задания и получай призы!
+<i>Испытай удачу, выполняй задания и получай призы!</i>
 """
     
     await edit_or_send_message(
@@ -78,27 +113,103 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data == "fox_try_luck")
 async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
-    """Испытать удачу"""
+    """Меню испытания удачи"""
     await ensure_db()
     logger.info(f"[Gamification] fox_try_luck от {callback.from_user.id}")
     
+    await check_and_reset_daily_spin(session, callback.from_user.id)
     player = await get_or_create_player(session, callback.from_user.id)
+    
+    has_free = player.free_spins > 0
     
     text = f"""🎰 <b>Испытать удачу</b>
 
-🦊 Лиса готовит для тебя испытание...
+🦊 Лиса приготовила для тебя испытание!
 
 🎫 Бесплатных попыток: <b>{player.free_spins}</b>
 🪙 Лискоинов: <b>{player.coins}</b>
 
-<i>Игровая механика скоро будет доступна!</i>
+<b>Возможные призы:</b>
+• 📅 Дни VPN (1-60 дней)
+• 🪙 Лискоины (10-200)
+• 💸 Рубли на баланс
+• 🍀 Бусты удачи
+
+<i>Стоимость попытки: {SPIN_COST_COINS} Лискоинов</i>
 """
+    
     await edit_or_send_message(
         target_message=callback.message,
         text=text,
-        reply_markup=build_back_to_den_kb(),
+        reply_markup=build_try_luck_kb(has_free, player.coins),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "fox_spin_free")
+async def handle_spin_free(callback: CallbackQuery, session: AsyncSession):
+    """Бесплатная попытка"""
+    await ensure_db()
+    logger.info(f"[Gamification] fox_spin_free от {callback.from_user.id}")
+    
+    result = await play_game(session, callback.from_user.id, use_coins=False)
+    
+    if not result["success"]:
+        if result["error"] == "no_spins":
+            await callback.answer("❌ Нет бесплатных попыток!", show_alert=True)
+            return
+        await callback.answer(f"❌ {result['error']}", show_alert=True)
+        return
+    
+    text = format_prize_message(
+        result["game_type"],
+        result["prize"],
+        result["coins_spent"],
+        result["new_balance"],
+    )
+    
+    await edit_or_send_message(
+        target_message=callback.message,
+        text=text,
+        reply_markup=build_after_game_kb(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fox_spin_coins")
+async def handle_spin_coins(callback: CallbackQuery, session: AsyncSession):
+    """Попытка за Лискоины"""
+    await ensure_db()
+    logger.info(f"[Gamification] fox_spin_coins от {callback.from_user.id}")
+    
+    result = await play_game(session, callback.from_user.id, use_coins=True)
+    
+    if not result["success"]:
+        await callback.answer(f"❌ {result['error']}", show_alert=True)
+        return
+    
+    text = format_prize_message(
+        result["game_type"],
+        result["prize"],
+        result["coins_spent"],
+        result["new_balance"],
+    )
+    
+    await edit_or_send_message(
+        target_message=callback.message,
+        text=text,
+        reply_markup=build_after_game_kb(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fox_no_coins")
+async def handle_no_coins(callback: CallbackQuery):
+    """Недостаточно монет"""
+    await callback.answer(
+        f"❌ Недостаточно Лискоинов!\nНужно: {SPIN_COST_COINS} 🪙",
+        show_alert=True
+    )
 
 
 @router.callback_query(F.data == "fox_quests")
@@ -136,13 +247,17 @@ async def handle_my_prizes(callback: CallbackQuery, session: AsyncSession):
     if prizes:
         prizes_text = ""
         for prize in prizes:
-            prizes_text += f"• {prize.description or f'{prize.prize_type}: {prize.value}'}\n"
+            days_left = (prize.expires_at - prize.created_at).days
+            expires_info = f"(истекает через {days_left}д)"
+            prizes_text += f"• {prize.description or f'{prize.prize_type}: {prize.value}'} {expires_info}\n"
         
         text = f"""🎁 <b>Мои призы</b>
 
 {prizes_text}
-<i>Нажмите на приз, чтобы использовать</i>
+<i>Призы с днями VPN можно применить к подписке.</i>
+<i>Призы истекают через 14 дней!</i>
 """
+        # TODO: Добавить кнопки для применения призов
     else:
         text = """🎁 <b>Мои призы</b>
 
