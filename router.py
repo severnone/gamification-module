@@ -1224,3 +1224,105 @@ async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
     await msg.edit_text(text, reply_markup=builder.as_markup())
+
+
+# ==================== КАЛЕНДАРЬ 7 ДНЕЙ ====================
+
+@router.callback_query(F.data == "fox_calendar")
+async def handle_calendar(callback: CallbackQuery, session: AsyncSession):
+    """Показать 7-дневный календарь"""
+    await ensure_db()
+    logger.info(f"[Gamification] fox_calendar от {callback.from_user.id}")
+    
+    from .calendar import build_calendar_text, build_calendar_kb, get_calendar_status
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    
+    status = get_calendar_status(player.calendar_day, player.last_calendar_claim)
+    text = build_calendar_text(player.calendar_day, player.last_calendar_claim)
+    kb = build_calendar_kb(status["can_claim"])
+    
+    await edit_or_send_message(callback.message, text, kb.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fox_calendar_claim")
+async def handle_calendar_claim(callback: CallbackQuery, session: AsyncSession):
+    """Забрать награду из календаря"""
+    await ensure_db()
+    logger.info(f"[Gamification] fox_calendar_claim от {callback.from_user.id}")
+    await callback.answer()
+    
+    from .calendar import get_calendar_status, CALENDAR_REWARDS, build_calendar_kb
+    from .db import update_player_coins, add_paid_spin
+    from datetime import datetime
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    status = get_calendar_status(player.calendar_day, player.last_calendar_claim)
+    
+    if not status["can_claim"]:
+        await callback.answer("⏰ Ты уже забрал награду сегодня!", show_alert=True)
+        return
+    
+    # Определяем новый день
+    if status["streak_broken"] or player.calendar_day >= 7:
+        new_day = 1
+    else:
+        new_day = player.calendar_day + 1
+    
+    reward = CALENDAR_REWARDS[new_day]
+    
+    # Выдаём награды
+    coins_added = reward.get("coins", 0)
+    spins_added = reward.get("spins", 0)
+    light_added = reward.get("light", 0)
+    
+    if coins_added > 0:
+        await update_player_coins(session, callback.from_user.id, coins_added)
+    
+    if spins_added > 0:
+        await add_paid_spin(session, callback.from_user.id, spins_added)
+    
+    if light_added > 0:
+        player.light += light_added
+    
+    # Обновляем календарь
+    player.calendar_day = new_day
+    player.last_calendar_claim = datetime.utcnow()
+    await session.commit()
+    
+    # Текст результата
+    reward_parts = []
+    if coins_added:
+        reward_parts.append(f"+{coins_added} 🪙")
+    if spins_added:
+        reward_parts.append(f"+{spins_added} 🎫")
+    if light_added:
+        reward_parts.append(f"+{light_added} ✨")
+    
+    reward_text = ", ".join(reward_parts)
+    
+    if new_day == 7:
+        text = f"""🎉 <b>ДЕНЬ 7 — БОНУСНЫЙ!</b>
+
+🌟 Ты получил максимальную награду!
+
+{reward_text}
+
+<i>Завтра начнётся новый календарь!</i>
+"""
+    else:
+        text = f"""✅ <b>День {new_day} — награда получена!</b>
+
+{reward_text}
+
+📅 До бонуса: {7 - new_day} дней
+
+<i>Приходи завтра!</i>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="📅 Календарь", callback_data="fox_calendar"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())

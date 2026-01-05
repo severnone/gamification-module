@@ -32,6 +32,10 @@ class FoxPlayer(Base):
     login_streak = Column(Integer, default=0, nullable=False)  # Дней подряд
     last_login_date = Column(DateTime, nullable=True)  # Последний вход
     
+    # 7-дневный календарь наград
+    calendar_day = Column(Integer, default=0, nullable=False)  # Текущий день (0-7)
+    last_calendar_claim = Column(DateTime, nullable=True)  # Когда забрал последнюю награду
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
