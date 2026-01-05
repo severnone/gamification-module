@@ -153,6 +153,30 @@ class FoxDeal(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class FoxCasinoSession(Base):
+    """Сессия игры в казино (от входа до выхода)"""
+    __tablename__ = "fox_casino_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Статистика сессии
+    games_played = Column(Integer, default=0)
+    total_bet = Column(Float, default=0)  # Всего поставлено
+    total_won = Column(Float, default=0)  # Всего выиграно
+    net_result = Column(Float, default=0)  # Итог (+ или -)
+    
+    # Серии в сессии
+    max_win_streak = Column(Integer, default=0)
+    max_lose_streak = Column(Integer, default=0)
+    
+    # Состояние
+    is_active = Column(Boolean, default=True)  # Сессия активна
+    
+    started_at = Column(DateTime, default=datetime.utcnow)
+    ended_at = Column(DateTime, nullable=True)
+
+
 class FoxCasinoGame(Base):
     """История игр в Лисьем казино (реальные ставки!)"""
     __tablename__ = "fox_casino_games"
@@ -180,33 +204,9 @@ class FoxCasinoGame(Base):
     session_id = Column(Integer, ForeignKey("fox_casino_sessions.id"), nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
-
-
-class FoxCasinoSession(Base):
-    """Сессия игры в казино (от входа до выхода)"""
-    __tablename__ = "fox_casino_sessions"
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), nullable=False, index=True)
     
-    # Статистика сессии
-    games_played = Column(Integer, default=0)
-    total_bet = Column(Float, default=0)  # Всего поставлено
-    total_won = Column(Float, default=0)  # Всего выиграно
-    net_result = Column(Float, default=0)  # Итог (+ или -)
-    
-    # Серии в сессии
-    max_win_streak = Column(Integer, default=0)
-    max_lose_streak = Column(Integer, default=0)
-    
-    # Состояние
-    is_active = Column(Boolean, default=True)  # Сессия активна
-    
-    started_at = Column(DateTime, default=datetime.utcnow)
-    ended_at = Column(DateTime, nullable=True)
-    
-    # Связь с играми
-    games = relationship("FoxCasinoGame", backref="session", foreign_keys=[FoxCasinoGame.session_id])
+    # Связь с сессией
+    session = relationship("FoxCasinoSession", backref="games")
 
 
 class FoxCasinoProfile(Base):
