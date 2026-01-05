@@ -255,104 +255,106 @@ async def animate_slots(message: Message, final_symbols: list[str]) -> None:
     await asyncio.sleep(1.5)
 
 
-async def animate_chest(message: Message, chosen_chest: int) -> None:
-    """Анимация сундуков — выбор из трёх"""
+async def animate_chest_opening(message: Message, chosen_chest: int) -> None:
+    """Анимация открытия выбранного сундука"""
     
-    # Фаза 1: Три закрытых сундука
-    await message.edit_text(
-        "📦 <b>СУНДУКИ ЛИСЫ</b>\n\n"
-        "🦊 Лиса спрятала приз в один из сундуков!\n\n"
-        "  📦      📦      📦\n"
-        "   1        2        3\n\n"
-        "<i>Выбираем сундук...</i>"
-    )
-    await asyncio.sleep(1.5)
-    
-    # Фаза 2: Выбор сундука
+    # Фаза 1: Показываем выбор
     chests = ["📦", "📦", "📦"]
     chests[chosen_chest] = "👆"
     await message.edit_text(
         "📦 <b>СУНДУКИ ЛИСЫ</b>\n\n"
-        "🎯 Выбран сундук!\n\n"
         f"  {chests[0]}      {chests[1]}      {chests[2]}\n"
         "   1        2        3\n\n"
-        f"<i>Открываем сундук {chosen_chest + 1}...</i>"
+        f"🎯 Ты выбрал сундук <b>№{chosen_chest + 1}</b>!\n\n"
+        "<i>Открываем...</i>"
     )
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(1.0)
     
-    # Фаза 3: Сундук трясётся
-    for shake in ["📦💨", "💨📦", "📦✨"]:
+    # Фаза 2: Сундук трясётся
+    shake_frames = ["📦💫", "✨📦", "📦⚡", "🔓📦"]
+    for shake in shake_frames:
         chests_shake = ["📦", "📦", "📦"]
         chests_shake[chosen_chest] = shake
         await message.edit_text(
             "📦 <b>СУНДУКИ ЛИСЫ</b>\n\n"
-            "🔓 Открываем...\n\n"
             f"  {chests_shake[0]}    {chests_shake[1]}    {chests_shake[2]}\n"
             "   1        2        3\n\n"
-            "<i>Что же внутри?!</i>"
+            "🔐 <i>Замок открывается...</i>"
         )
-        await asyncio.sleep(0.6)
+        await asyncio.sleep(0.5)
     
-    # Фаза 4: Сундук открывается
-    chests_open = ["📦", "📦", "📦"]
-    chests_open[chosen_chest] = "🎁"
+    # Фаза 3: Сундук открывается
     await message.edit_text(
         "📦 <b>СУНДУКИ ЛИСЫ</b>\n\n"
-        "✨ Сундук открыт!\n\n"
-        f"  {chests_open[0]}      {chests_open[1]}      {chests_open[2]}\n"
-        "   1        2        3\n\n"
-        "<i>Смотрим приз...</i>"
+        "        ✨✨✨\n"
+        "       🎁📦🎁\n"
+        "        ✨✨✨\n\n"
+        "🦊 <i>Лиса показывает, что внутри...</i>"
     )
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(1.2)
 
 
 async def animate_wheel(message: Message, final_sector: int) -> None:
-    """Анимация колеса удачи — настоящее колесо"""
+    """Анимация колеса удачи — крутящееся колесо"""
     
-    # Секторы колеса
+    # Секторы колеса (8 секторов)
     sectors = ["🦊", "💎", "🪙", "🍀", "⭐", "💰", "🎁", "❌"]
     
     # Фаза 1: Колесо готово
-    wheel_display = """
-        🍀  💎  🦊
-      ⭐          🪙
-        💰  🎁  ❌
-    """
     await message.edit_text(
         "🎡 <b>КОЛЕСО УДАЧИ</b>\n\n"
-        f"{wheel_display}\n"
-        "        ⬆️\n\n"
-        "<i>Крутим колесо...</i>"
+        "      🍀 — 💎 — 🦊\n"
+        "     /            \\\n"
+        "   ⭐      🎯      🪙\n"
+        "     \\            /\n"
+        "      💰 — 🎁 — ❌\n\n"
+        "🦊 <i>Лиса крутит колесо...</i>"
     )
-    await asyncio.sleep(1.0)
+    await asyncio.sleep(1.2)
     
-    # Фаза 2: Колесо крутится (показываем разные символы под стрелкой)
-    spin_sequence = random.sample(sectors, len(sectors)) * 2  # 16 позиций
+    # Фаза 2: Колесо вращается (показываем вращение через стрелку)
+    arrows = ["⬆️", "↗️", "➡️", "↘️", "⬇️", "↙️", "⬅️", "↖️"]
+    spin_count = 10 + random.randint(0, 5)  # Случайное количество оборотов
     
-    for i, symbol in enumerate(spin_sequence[:8]):
-        speed_text = "🔥 Быстро!" if i < 3 else "⏳ Замедляется..." if i < 6 else "🎯 Почти..."
+    for i in range(spin_count):
+        arrow = arrows[i % len(arrows)]
+        current_sector = sectors[i % len(sectors)]
+        
+        if i < 4:
+            speed = "🔥 Быстро!"
+            delay = 0.2
+        elif i < 8:
+            speed = "💨 Крутится..."
+            delay = 0.35
+        else:
+            speed = "⏳ Замедляется..."
+            delay = 0.5 + (i - 8) * 0.15
+        
         await message.edit_text(
             "🎡 <b>КОЛЕСО УДАЧИ</b>\n\n"
-            f"     ╔═════╗\n"
-            f"     ║  {symbol}  ║\n"
-            f"     ╚═════╝\n"
-            f"        ⬆️\n\n"
-            f"<i>{speed_text}</i>"
+            f"         {arrow}\n"
+            "      🍀 — 💎 — 🦊\n"
+            "     /            \\\n"
+            f"   ⭐    [{current_sector}]    🪙\n"
+            "     \\            /\n"
+            "      💰 — 🎁 — ❌\n\n"
+            f"<i>{speed}</i>"
         )
-        # Замедляемся постепенно
-        delay = 0.3 + (i * 0.15)
         await asyncio.sleep(min(delay, 0.8))
     
     # Фаза 3: Финальная остановка
     final_symbol = sectors[final_sector % len(sectors)]
     await message.edit_text(
         "🎡 <b>КОЛЕСО УДАЧИ</b>\n\n"
-        f"     ╔═════╗\n"
-        f"  ➤  ║  {final_symbol}  ║  ◄\n"
-        f"     ╚═════╝\n\n"
-        "<i>Колесо остановилось!</i>"
+        "         ⬇️\n"
+        "      🍀 — 💎 — 🦊\n"
+        "     /            \\\n"
+        f"   ⭐    【{final_symbol}】    🪙\n"
+        "     \\            /\n"
+        "      💰 — 🎁 — ❌\n\n"
+        "🎯 <b>Колесо остановилось!</b>"
     )
-    await asyncio.sleep(1.2)
+    await asyncio.sleep(1.0)
 
 
 # ==================== ОСНОВНАЯ ИГРА ====================
@@ -364,12 +366,14 @@ async def play_game(
     message: Message = None,
     game_type: str = None,
     test_mode: bool = False,
+    chosen_chest: int = None,
 ) -> dict:
     """
     Основная функция игры.
     
     game_type: "slots", "chest", "wheel" или None (случайный)
     test_mode: если True - бесконечные попытки для тестирования
+    chosen_chest: индекс выбранного сундука (0, 1, 2) для игры с сундуками
     """
     player = await get_or_create_player(session, tg_id)
     
@@ -439,9 +443,9 @@ async def play_game(
     # Крутим символы
     symbols = roll_slots()
     
-    # Случайные параметры для анимаций
-    chosen_chest = random.randint(0, 2)  # Для сундука (0, 1, 2)
-    wheel_sector = random.randint(0, 7)   # Для колеса
+    # Параметры для анимаций
+    chest_index = chosen_chest if chosen_chest is not None else random.randint(0, 2)
+    wheel_sector = random.randint(0, 7)
     
     # Анимация (если есть сообщение)
     if message:
@@ -449,7 +453,7 @@ async def play_game(
             if game_type == "slots":
                 await animate_slots(message, symbols)
             elif game_type == "chest":
-                await animate_chest(message, chosen_chest)
+                await animate_chest_opening(message, chest_index)
             elif game_type == "wheel":
                 await animate_wheel(message, wheel_sector)
         except Exception as e:
@@ -508,7 +512,7 @@ async def play_game(
 
 
 def format_prize_message(game_type: str, prize: Prize, symbols: list[str], coins_spent: int, new_balance: int) -> str:
-    """Форматирует сообщение о выигрыше"""
+    """Форматирует сообщение о выигрыше — уникальный стиль для каждой игры"""
     
     rarity_color = RARITY_COLORS.get(prize.rarity, "⚪")
     rarity_name = RARITY_NAMES.get(prize.rarity, "Обычный")
@@ -526,23 +530,47 @@ def format_prize_message(game_type: str, prize: Prize, symbols: list[str], coins
         if prize.prize_type == "empty":
             header = "😔 Не повезло..."
         else:
-            header = "🎰 Результат"
+            header = "👍 Результат"
     
-    # Отображение барабанов
-    s1, s2, s3 = symbols
-    slots_display = f"┃ {s1} ┃ {s2} ┃ {s3} ┃"
+    # УНИКАЛЬНОЕ отображение для каждой игры
+    if game_type == "slots":
+        # Слоты — классические барабаны
+        s1, s2, s3 = symbols
+        game_display = (
+            "🎰 <b>СЛОТЫ</b>\n\n"
+            "╔═══╦═══╦═══╗\n"
+            f"║ {s1} ║ {s2} ║ {s3} ║\n"
+            "╚═══╩═══╩═══╝"
+        )
+    elif game_type == "chest":
+        # Сундук — открытый сундук с призом
+        game_display = (
+            "📦 <b>СУНДУКИ ЛИСЫ</b>\n\n"
+            "     🎁\n"
+            "    ╭───╮\n"
+            f"    │ {prize.emoji} │\n"
+            "    ╰───╯\n"
+            "   📦📦📦"
+        )
+    elif game_type == "wheel":
+        # Колесо — стрелка указывает на выигрыш
+        game_display = (
+            "🎡 <b>КОЛЕСО УДАЧИ</b>\n\n"
+            "      ⬇️\n"
+            f"   【 {prize.emoji} 】\n"
+            "    🎯🎯🎯"
+        )
+    else:
+        game_display = f"🎮 Игра: {game_type}"
     
-    message = f"""<b>{header}</b>
-
-{slots_display}
-
-"""
+    message = f"<b>{header}</b>\n\n{game_display}\n\n"
     
+    # Информация о призе
     if prize.prize_type != "empty" or prize.value > 0:
         message += f"{rarity_color} <b>{rarity_name}</b>\n"
         message += f"{prize.emoji} <b>{prize.description}</b>\n\n"
     else:
-        message += "<i>В следующий раз повезёт!</i>\n\n"
+        message += "🦊 <i>Лиса ушла с пустыми лапами...</i>\n\n"
     
     if prize.prize_type in ("vpn_days", "balance"):
         message += "📦 <i>Приз сохранён в «Мои призы»</i>\n\n"
