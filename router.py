@@ -969,13 +969,21 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
     
     builder = InlineKeyboardBuilder()
     
-    # Кнопки покупки (только если хватает)
+    # Кнопки покупки (всегда показываем, но с 🔒 если не хватает)
     if player.coins >= 50:
-        builder.row(InlineKeyboardButton(text="🍀 +10% (50 🪙)", callback_data="fox_buy_boost_10"))
+        builder.row(InlineKeyboardButton(text="✅ +10% удачи (50 🪙)", callback_data="fox_buy_boost_10"))
+    else:
+        builder.row(InlineKeyboardButton(text="🔒 +10% удачи (50 🪙)", callback_data="fox_no_coins_50"))
+    
     if player.coins >= 100:
-        builder.row(InlineKeyboardButton(text="🍀 +20% (100 🪙)", callback_data="fox_buy_boost_20"))
+        builder.row(InlineKeyboardButton(text="✅ +20% удачи (100 🪙)", callback_data="fox_buy_boost_20"))
+    else:
+        builder.row(InlineKeyboardButton(text="🔒 +20% удачи (100 🪙)", callback_data="fox_no_coins_100"))
+    
     if player.coins >= 30:
-        builder.row(InlineKeyboardButton(text="🎫 Попытка (30 🪙)", callback_data="fox_buy_spin"))
+        builder.row(InlineKeyboardButton(text="✅ Попытка (30 🪙)", callback_data="fox_buy_spin"))
+    else:
+        builder.row(InlineKeyboardButton(text="🔒 Попытка (30 🪙)", callback_data="fox_no_coins_30"))
     
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
@@ -987,10 +995,17 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
     await callback.answer()
 
 
-@router.callback_query(F.data == "fox_no_coins_shop")
-async def handle_no_coins_shop(callback: CallbackQuery):
-    """Недостаточно монет для магазина"""
-    await callback.answer("❌ Недостаточно Лискоинов! Играй и выполняй задания.", show_alert=True)
+@router.callback_query(F.data.startswith("fox_no_coins_"))
+async def handle_no_coins(callback: CallbackQuery):
+    """Недостаточно монет для покупки"""
+    needed = callback.data.split("_")[-1]
+    await callback.answer(
+        f"🔒 Нужно {needed} Лискоинов!\n\n"
+        f"🎰 Играй в игры\n"
+        f"🧰 Выполняй задания\n"
+        f"📅 Заходи каждый день",
+        show_alert=True
+    )
 
 
 @router.callback_query(F.data.startswith("fox_buy_boost_"))
