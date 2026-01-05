@@ -1167,6 +1167,54 @@ async def save_game(
     )
 
 
+async def record_casino_game(
+    session: AsyncSession,
+    tg_id: int,
+    bet: int,
+    won: bool,
+    multiplier: float,
+    payout: int
+):
+    """Универсальная функция записи игры для всех игр казино."""
+    from database.users import update_balance, get_balance
+    
+    profile = await get_or_create_casino_profile(session, tg_id)
+    casino_session = await get_current_session(session, tg_id)
+    
+    # Списываем ставку
+    await update_balance(session, tg_id, -bet)
+    
+    # Если выиграл — начисляем выигрыш (payout уже передан с учётом ставки)
+    if won and payout > 0:
+        await update_balance(session, tg_id, payout)
+    
+    # Обновляем статистику
+    await update_game_stats(session, profile, casino_session, bet, won, payout if won else 0)
+    
+    # Джекпот — часть ставки идёт в пул
+    await update_jackpot_pool(session, bet)
+    
+    # Получаем новый баланс
+    new_balance = await get_balance(session, tg_id)
+    
+    # Сохраняем игру
+    game = FoxCasinoGame(
+        tg_id=tg_id,
+        bet=bet,
+        won=won,
+        multiplier=multiplier,
+        payout=payout if won else 0,
+        phase=1,
+        was_doubled=False,
+        near_miss=False,
+        session_id=casino_session.id if casino_session else None,
+    )
+    session.add(game)
+    await session.commit()
+    
+    logger.info(f"[Casino] {tg_id}: игра bet={bet}, won={won}, multiplier={multiplier}, payout={payout}")
+
+
 async def self_block_casino(session: AsyncSession, tg_id: int) -> str:
     """Заблокировать себе вход в казино."""
     profile = await get_or_create_casino_profile(session, tg_id)

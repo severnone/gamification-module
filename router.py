@@ -1364,18 +1364,21 @@ async def handle_casino_enter(callback: CallbackQuery, session: AsyncSession):
 💰 Баланс: <b>{balance} ₽</b>
 🏆 Джекпот: <b>{jackpot} ₽</b>
 {streak_line}
-Выбери ставку:
+<b>Выбери игру:</b>
 """
     
-    row = []
-    for bet in FIXED_BETS:
-        if balance >= bet:
-            row.append(InlineKeyboardButton(text=f"{bet} ₽", callback_data=f"fox_casino_bet_{bet}"))
-    
-    if row:
-        builder.row(*row[:2])
-        if len(row) > 2:
-            builder.row(*row[2:])
+    # Игры казино
+    builder.row(
+        InlineKeyboardButton(text="🎲 Кости", callback_data="fox_casino_game_dice"),
+        InlineKeyboardButton(text="🃏 Блэкджэк", callback_data="fox_casino_game_blackjack"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🎯 Выше/Ниже", callback_data="fox_casino_game_hilo"),
+        InlineKeyboardButton(text="💎 Три карты", callback_data="fox_casino_game_cards"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔴 Красное/Чёрное", callback_data="fox_casino_game_redblack"),
+    )
     
     # Дополнительные кнопки
     builder.row(
@@ -1387,35 +1390,71 @@ async def handle_casino_enter(callback: CallbackQuery, session: AsyncSession):
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
 
-@router.callback_query(F.data.startswith("fox_casino_bet_"))
-async def handle_casino_bet_select(callback: CallbackQuery, session: AsyncSession):
-    """Подтверждение ставки"""
+# Временное хранилище выбранной игры
+_casino_selected_game: dict[int, str] = {}
+
+
+@router.callback_query(F.data.startswith("fox_casino_game_"))
+async def handle_casino_game_select(callback: CallbackQuery, session: AsyncSession):
+    """Выбор игры — показываем ставки"""
     await ensure_db()
     
-    bet = int(callback.data.split("_")[-1])
-    logger.info(f"[Casino] Выбор ставки {bet}₽ от {callback.from_user.id}")
+    game_type = callback.data.replace("fox_casino_game_", "")
+    tg_id = callback.from_user.id
+    logger.info(f"[Casino] Выбор игры {game_type} от {tg_id}")
     await callback.answer()
     
-    from .casino import BET_CONFIRM, can_play_bet
+    from database.users import get_balance
+    from .casino import FIXED_BETS, get_or_create_casino_profile, get_current_jackpot
     
-    can_play, error = await can_play_bet(session, callback.from_user.id, bet)
+    _casino_selected_game[tg_id] = game_type
     
-    if not can_play:
-        await callback.answer(f"❌ {error}", show_alert=True)
-        return
+    balance = int(await get_balance(session, tg_id))
+    profile = await get_or_create_casino_profile(session, tg_id)
+    jackpot = await get_current_jackpot(session)
     
-    text = BET_CONFIRM.format(bet=bet)
+    game_names = {
+        "dice": "🎲 Кости",
+        "blackjack": "🃏 Блэкджэк",
+        "hilo": "🎯 Выше/Ниже",
+        "cards": "💎 Три карты",
+        "redblack": "🔴 Красное/Чёрное",
+    }
+    game_name = game_names.get(game_type, "Игра")
+    
+    text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+<b>{game_name}</b>
+
+💰 Баланс: <b>{balance} ₽</b>
+🏆 Джекпот: <b>{jackpot} ₽</b>
+
+Выбери ставку:
+"""
     
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🎲 Бросить кость", callback_data=f"fox_casino_play_{bet}"))
-    builder.row(InlineKeyboardButton(text="🚪 Передумал", callback_data="fox_casino_enter"))
+    
+    row = []
+    for bet in FIXED_BETS:
+        if balance >= bet:
+            row.append(InlineKeyboardButton(text=f"{bet} ₽", callback_data=f"fox_casino_bet_{bet}"))
+    
+    if row:
+        builder.row(*row[:2])
+        if len(row) > 2:
+            builder.row(*row[2:])
+    else:
+        text += "\n<i>Недостаточно средств для игры</i>"
+    
+    builder.row(InlineKeyboardButton(text="⬅️ К играм", callback_data="fox_casino_enter"))
+    builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
 
-@router.callback_query(F.data.startswith("fox_casino_play_"))
-async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
-    """Игра в казино — СПИСАНИЕ РЕАЛЬНЫХ ДЕНЕГ! Фаза 1"""
+@router.callback_query(F.data.startswith("fox_casino_bet_"))
+async def handle_casino_bet_select(callback: CallbackQuery, session: AsyncSession):
+    """Выбор ставки — маршрутизация к выбранной игре"""
     import asyncio
     import random
     
@@ -1423,19 +1462,44 @@ async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
     
     bet = int(callback.data.split("_")[-1])
     tg_id = callback.from_user.id
-    logger.info(f"[Casino] ИГРА! Ставка {bet}₽ от {tg_id}")
+    
+    # Определяем выбранную игру
+    game_type = _casino_selected_game.get(tg_id, "dice")
+    logger.info(f"[Casino] ИГРА {game_type}! Ставка {bet}₽ от {tg_id}")
     await callback.answer()
     
-    from .casino import (
-        play_casino_phase1, can_play_bet, format_result_message,
-        ROLLING_TEXTS, PHASE1_WIN_X15, get_or_create_casino_profile, get_streak_text
-    )
+    from .casino import can_play_bet
     
     # Финальная проверка
     can_play, error = await can_play_bet(session, tg_id, bet)
     if not can_play:
         await callback.answer(f"❌ {error}", show_alert=True)
         return
+    
+    # Маршрутизация к соответствующей игре
+    if game_type == "blackjack":
+        await play_blackjack_game(callback, session, bet)
+    elif game_type == "hilo":
+        await play_hilo_game(callback, session, bet)
+    elif game_type == "cards":
+        await play_cards_game(callback, session, bet)
+    elif game_type == "redblack":
+        await play_redblack_game(callback, session, bet)
+    else:  # dice - оригинальная игра
+        await play_dice_game(callback, session, bet)
+
+
+async def play_dice_game(callback: CallbackQuery, session: AsyncSession, bet: int):
+    """🎲 Игра в кости — оригинальная игра казино"""
+    import asyncio
+    import random
+    
+    tg_id = callback.from_user.id
+    
+    from .casino import (
+        play_casino_phase1, format_result_message,
+        PHASE1_WIN_X15, get_or_create_casino_profile, get_streak_text
+    )
     
     # Удаляем старое сообщение
     try:
@@ -1444,25 +1508,23 @@ async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
         pass
     
     # === ДРАМАТИЧНАЯ АНИМАЦИЯ ===
-    
-    # Фаза 1: Ставка принята
     msg = await callback.message.answer(
         f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"🎲 <b>Кости</b>\n"
         f"💰 Ставка: <b>{bet} ₽</b>\n\n"
-        f"🎲 <i>Лиса берёт кость...</i>"
+        f"<i>Лиса берёт кость...</i>"
     )
     await asyncio.sleep(1.5)
     
-    # Фаза 2: Бросок
     await msg.edit_text(
         f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"🎲 <b>Кости</b>\n"
         f"💰 Ставка: <b>{bet} ₽</b>\n\n"
-        f"🎲 <i>Лиса бросает!</i>\n\n"
+        f"<i>Лиса бросает!</i>\n\n"
         f"⚀ ⚁ ⚂ ⚃ ⚄ ⚅"
     )
     await asyncio.sleep(1.2)
     
-    # Фаза 3: Кость катится
     dice_faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"]
     for i in range(5):
         random.shuffle(dice_faces)
@@ -1470,34 +1532,27 @@ async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
             dots = "." * ((i % 3) + 1)
             await msg.edit_text(
                 f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+                f"🎲 <b>Кости</b>\n"
                 f"💰 Ставка: <b>{bet} ₽</b>\n\n"
-                f"🎲 Кость катится{dots}\n\n"
+                f"Кость катится{dots}\n\n"
                 f"   [ {dice_faces[0]} ]"
             )
         except Exception:
             pass
         await asyncio.sleep(0.5)
     
-    # Фаза 4: Замедление
     await msg.edit_text(
         f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"🎲 <b>Кости</b>\n"
         f"💰 Ставка: <b>{bet} ₽</b>\n\n"
-        f"🎲 <i>Кость останавливается...</i>\n\n"
+        f"<i>Кость останавливается...</i>\n\n"
         f"   [ ❓ ]"
     )
     await asyncio.sleep(1.5)
     
-    # Фаза 5: Лиса смотрит
     await msg.edit_text(
         f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
-        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
-        f"🦊 <i>Лиса смотрит на кость...</i>"
-    )
-    await asyncio.sleep(1.2)
-    
-    # Фаза 6: Напряжение
-    await msg.edit_text(
-        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"🎲 <b>Кости</b>\n"
         f"💰 Ставка: <b>{bet} ₽</b>\n\n"
         f"🦊 <i>...</i>"
     )
@@ -1539,6 +1594,834 @@ async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
     await msg.edit_text(text, reply_markup=builder.as_markup())
 
 
+# ==================== БЛЭКДЖЭК ====================
+_blackjack_hands: dict[int, dict] = {}  # {tg_id: {"player": [...], "dealer": [...], "bet": int}}
+
+async def play_blackjack_game(callback: CallbackQuery, session: AsyncSession, bet: int):
+    """🃏 Блэкджэк — игрок против Лисы"""
+    import asyncio
+    import random
+    
+    tg_id = callback.from_user.id
+    
+    from .casino import record_casino_game, get_or_create_casino_profile, get_streak_text
+    from database.users import update_balance
+    
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    # Создаём колоду
+    suits = ["♠️", "♥️", "♦️", "♣️"]
+    values = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+    deck = [(v, s) for v in values for s in suits]
+    random.shuffle(deck)
+    
+    # Раздаём карты
+    player_hand = [deck.pop(), deck.pop()]
+    dealer_hand = [deck.pop(), deck.pop()]
+    
+    # Сохраняем состояние
+    _blackjack_hands[tg_id] = {
+        "player": player_hand,
+        "dealer": dealer_hand,
+        "deck": deck,
+        "bet": bet
+    }
+    
+    # Анимация раздачи
+    msg = await callback.message.answer(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"🃏 <b>Блэкджэк</b>\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"<i>Лиса тасует колоду...</i>"
+    )
+    await asyncio.sleep(1.5)
+    
+    await msg.edit_text(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"🃏 <b>Блэкджэк</b>\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"<i>Лиса раздаёт карты...</i>"
+    )
+    await asyncio.sleep(1.2)
+    
+    # Показываем карты
+    player_total = blackjack_calculate(player_hand)
+    
+    text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🃏 <b>Блэкджэк</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+🦊 Лиса: [ {dealer_hand[0][0]}{dealer_hand[0][1]} ] [ 🂠 ]
+
+👤 Ты: {blackjack_format_hand(player_hand)}
+📊 Очки: <b>{player_total}</b>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    
+    # Проверяем натуральный блэкджэк
+    if player_total == 21:
+        # Блэкджэк! Сразу показываем результат
+        dealer_total = blackjack_calculate(dealer_hand)
+        
+        if dealer_total == 21:
+            # Ничья
+            text += "\n🤝 <b>Ничья! У Лисы тоже блэкджэк!</b>"
+            text += f"\n\n🦊 Лиса: {blackjack_format_hand(dealer_hand)} ({dealer_total})"
+            # Ставка возвращается
+        else:
+            # Игрок выиграл с блэкджэком (×2.5)
+            payout = int(bet * 2.5)
+            await update_balance(session, tg_id, payout)
+            await record_casino_game(session, tg_id, bet, True, 2.5, payout)
+            
+            text += f"\n🎉 <b>БЛЭКДЖЭК! Ты получаешь {payout} ₽!</b>"
+            text += f"\n\n🦊 Лиса: {blackjack_format_hand(dealer_hand)} ({dealer_total})"
+            text += "\n\n<i>Лиса недовольна...</i>"
+        
+        profile = await get_or_create_casino_profile(session, tg_id)
+        streak_text = get_streak_text(profile)
+        if streak_text:
+            text += f"\n\n{streak_text}"
+        
+        builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_again"))
+        builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
+        
+        if tg_id in _blackjack_hands:
+            del _blackjack_hands[tg_id]
+    else:
+        builder.row(
+            InlineKeyboardButton(text="🃏 Ещё карту", callback_data="fox_bj_hit"),
+            InlineKeyboardButton(text="✋ Хватит", callback_data="fox_bj_stand"),
+        )
+    
+    await msg.edit_text(text, reply_markup=builder.as_markup())
+
+
+def blackjack_calculate(hand: list) -> int:
+    """Подсчёт очков в блэкджэке"""
+    total = 0
+    aces = 0
+    
+    for card, _ in hand:
+        if card in ["J", "Q", "K"]:
+            total += 10
+        elif card == "A":
+            total += 11
+            aces += 1
+        else:
+            total += int(card)
+    
+    # Пересчитываем тузы если перебор
+    while total > 21 and aces > 0:
+        total -= 10
+        aces -= 1
+    
+    return total
+
+
+def blackjack_format_hand(hand: list) -> str:
+    """Форматирование руки"""
+    return " ".join([f"[ {v}{s} ]" for v, s in hand])
+
+
+@router.callback_query(F.data == "fox_bj_hit")
+async def handle_blackjack_hit(callback: CallbackQuery, session: AsyncSession):
+    """Взять ещё карту"""
+    import asyncio
+    
+    await ensure_db()
+    tg_id = callback.from_user.id
+    await callback.answer()
+    
+    from .casino import record_casino_game, get_or_create_casino_profile, get_streak_text
+    from database.users import update_balance
+    
+    if tg_id not in _blackjack_hands:
+        await callback.answer("❌ Игра не найдена", show_alert=True)
+        return
+    
+    game = _blackjack_hands[tg_id]
+    bet = game["bet"]
+    
+    # Берём карту
+    new_card = game["deck"].pop()
+    game["player"].append(new_card)
+    
+    player_total = blackjack_calculate(game["player"])
+    
+    text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🃏 <b>Блэкджэк</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+🦊 Лиса: [ {game["dealer"][0][0]}{game["dealer"][0][1]} ] [ 🂠 ]
+
+👤 Ты: {blackjack_format_hand(game["player"])}
+📊 Очки: <b>{player_total}</b>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    
+    if player_total > 21:
+        # Перебор!
+        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        
+        near_miss = ""
+        if player_total == 22:
+            near_miss = "\n\n<i>Одна лишняя карта...</i>"
+        
+        text += f"\n💥 <b>ПЕРЕБОР! Ты потерял {bet} ₽</b>{near_miss}"
+        text += "\n\n🦊 <i>Лиса улыбается.</i>"
+        
+        profile = await get_or_create_casino_profile(session, tg_id)
+        streak_text = get_streak_text(profile)
+        if streak_text:
+            text += f"\n\n{streak_text}"
+        
+        builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_again"))
+        builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
+        
+        del _blackjack_hands[tg_id]
+    elif player_total == 21:
+        # 21! Автоматически стоп
+        text += "\n\n✨ <b>21! Ждём Лису...</b>"
+        builder.row(InlineKeyboardButton(text="🦊 Ход Лисы", callback_data="fox_bj_stand"))
+    else:
+        builder.row(
+            InlineKeyboardButton(text="🃏 Ещё карту", callback_data="fox_bj_hit"),
+            InlineKeyboardButton(text="✋ Хватит", callback_data="fox_bj_stand"),
+        )
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+@router.callback_query(F.data == "fox_bj_stand")
+async def handle_blackjack_stand(callback: CallbackQuery, session: AsyncSession):
+    """Остановиться — ход Лисы"""
+    import asyncio
+    
+    await ensure_db()
+    tg_id = callback.from_user.id
+    await callback.answer()
+    
+    from .casino import record_casino_game, get_or_create_casino_profile, get_streak_text
+    from database.users import update_balance
+    
+    if tg_id not in _blackjack_hands:
+        await callback.answer("❌ Игра не найдена", show_alert=True)
+        return
+    
+    game = _blackjack_hands[tg_id]
+    bet = game["bet"]
+    player_total = blackjack_calculate(game["player"])
+    
+    # Анимация хода Лисы
+    await callback.message.edit_text(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"🃏 <b>Блэкджэк</b>\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"🦊 <i>Лиса открывает карты...</i>"
+    )
+    await asyncio.sleep(1.5)
+    
+    # Лиса берёт карты до 17+
+    while blackjack_calculate(game["dealer"]) < 17:
+        game["dealer"].append(game["deck"].pop())
+        await asyncio.sleep(0.8)
+    
+    dealer_total = blackjack_calculate(game["dealer"])
+    
+    text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🃏 <b>Блэкджэк</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+🦊 Лиса: {blackjack_format_hand(game["dealer"])}
+📊 Очки: <b>{dealer_total}</b>
+
+👤 Ты: {blackjack_format_hand(game["player"])}
+📊 Очки: <b>{player_total}</b>
+
+"""
+    
+    builder = InlineKeyboardBuilder()
+    
+    # Определяем победителя
+    if dealer_total > 21:
+        # Лиса перебрала
+        payout = bet * 2
+        await update_balance(session, tg_id, payout)
+        await record_casino_game(session, tg_id, bet, True, 2.0, payout)
+        text += f"💥 <b>Лиса перебрала! Ты получаешь {payout} ₽!</b>"
+        text += "\n\n<i>Лиса раздражённо бросает карты.</i>"
+    elif dealer_total > player_total:
+        # Лиса выиграла
+        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        diff = dealer_total - player_total
+        near_miss = f"\n\n<i>Всего {diff} очков разницы...</i>" if diff <= 2 else ""
+        text += f"❌ <b>Лиса выиграла. Ты потерял {bet} ₽</b>{near_miss}"
+        text += "\n\n🦊 <i>Лиса забирает своё.</i>"
+    elif dealer_total < player_total:
+        # Игрок выиграл
+        payout = bet * 2
+        await update_balance(session, tg_id, payout)
+        await record_casino_game(session, tg_id, bet, True, 2.0, payout)
+        text += f"✅ <b>Ты выиграл {payout} ₽!</b>"
+        text += "\n\n<i>Лиса молча пододвигает фишки.</i>"
+    else:
+        # Ничья
+        await update_balance(session, tg_id, bet)  # Возврат ставки
+        text += "🤝 <b>Ничья! Ставка возвращена.</b>"
+        text += "\n\n<i>Лиса молча смотрит.</i>"
+    
+    profile = await get_or_create_casino_profile(session, tg_id)
+    streak_text = get_streak_text(profile)
+    if streak_text:
+        text += f"\n\n{streak_text}"
+    
+    builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_again"))
+    builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
+    
+    del _blackjack_hands[tg_id]
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+# ==================== ВЫШЕ/НИЖЕ ====================
+_hilo_games: dict[int, dict] = {}  # {tg_id: {"number": int, "bet": int, "multiplier": float, "round": int}}
+
+async def play_hilo_game(callback: CallbackQuery, session: AsyncSession, bet: int):
+    """🎯 Выше/Ниже — угадай число"""
+    import asyncio
+    import random
+    
+    tg_id = callback.from_user.id
+    
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    # Загадываем число
+    number = random.randint(1, 10)
+    
+    _hilo_games[tg_id] = {
+        "number": number,
+        "bet": bet,
+        "multiplier": 1.0,
+        "round": 1,
+        "current_win": bet
+    }
+    
+    msg = await callback.message.answer(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"🎯 <b>Выше/Ниже</b>\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"<i>Лиса загадывает число...</i>"
+    )
+    await asyncio.sleep(1.5)
+    
+    # Показываем подсказку
+    hint = "1️⃣2️⃣3️⃣4️⃣5️⃣6️⃣7️⃣8️⃣9️⃣🔟"
+    
+    text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🎯 <b>Выше/Ниже</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+🦊 <i>Лиса загадала число от 1 до 10</i>
+
+{hint}
+
+❓ <b>Моё число выше или ниже 5?</b>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="⬆️ Выше 5", callback_data="fox_hilo_high"),
+        InlineKeyboardButton(text="⬇️ Ниже 5", callback_data="fox_hilo_low"),
+    )
+    builder.row(InlineKeyboardButton(text="5️⃣ Ровно 5", callback_data="fox_hilo_five"))
+    
+    await msg.edit_text(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("fox_hilo_"))
+async def handle_hilo_guess(callback: CallbackQuery, session: AsyncSession):
+    """Обработка догадки в Выше/Ниже"""
+    import asyncio
+    import random
+    
+    await ensure_db()
+    tg_id = callback.from_user.id
+    await callback.answer()
+    
+    from .casino import record_casino_game, get_or_create_casino_profile, get_streak_text
+    from database.users import update_balance
+    
+    if tg_id not in _hilo_games:
+        await callback.answer("❌ Игра не найдена", show_alert=True)
+        return
+    
+    game = _hilo_games[tg_id]
+    guess = callback.data.replace("fox_hilo_", "")
+    number = game["number"]
+    bet = game["bet"]
+    
+    # Проверяем догадку
+    correct = False
+    if guess == "high" and number > 5:
+        correct = True
+    elif guess == "low" and number < 5:
+        correct = True
+    elif guess == "five" and number == 5:
+        correct = True
+        game["multiplier"] *= 3  # Угадать 5 = x3
+    
+    if correct and guess != "five":
+        game["multiplier"] *= 1.5
+    
+    if correct:
+        game["round"] += 1
+        game["current_win"] = int(bet * game["multiplier"])
+        game["number"] = random.randint(1, 10)  # Новое число
+        
+        text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🎯 <b>Выше/Ниже</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+✅ <b>Верно! Число было {number}</b>
+
+🔥 Раунд: <b>{game["round"]}</b>
+💰 Текущий выигрыш: <b>{game["current_win"]} ₽</b>
+📈 Множитель: <b>×{game["multiplier"]:.1f}</b>
+
+❓ <b>Следующее число выше или ниже 5?</b>
+
+<i>Серия... Интересно, когда оборвётся?</i>
+"""
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(
+            InlineKeyboardButton(text="⬆️ Выше 5", callback_data="fox_hilo_high"),
+            InlineKeyboardButton(text="⬇️ Ниже 5", callback_data="fox_hilo_low"),
+        )
+        builder.row(InlineKeyboardButton(text="5️⃣ Ровно 5", callback_data="fox_hilo_five"))
+        builder.row(InlineKeyboardButton(text=f"💰 Забрать {game['current_win']} ₽", callback_data="fox_hilo_take"))
+        
+    else:
+        # Проигрыш
+        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        
+        near_miss = ""
+        if (guess == "high" and number == 5) or (guess == "low" and number == 5):
+            near_miss = "\n\n<i>Так близко к победе...</i>"
+        elif abs(number - 5) == 1:
+            near_miss = "\n\n<i>Одна единица решала всё...</i>"
+        
+        text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🎯 <b>Выше/Ниже</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+❌ <b>Неверно! Число было {number}</b>{near_miss}
+
+💸 Ты потерял <b>{bet} ₽</b>
+
+🦊 <i>Лиса молча убирает карту.</i>
+"""
+        
+        profile = await get_or_create_casino_profile(session, tg_id)
+        streak_text = get_streak_text(profile)
+        if streak_text:
+            text += f"\n\n{streak_text}"
+        
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_again"))
+        builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
+        
+        del _hilo_games[tg_id]
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+@router.callback_query(F.data == "fox_hilo_take")
+async def handle_hilo_take(callback: CallbackQuery, session: AsyncSession):
+    """Забрать выигрыш в Выше/Ниже"""
+    await ensure_db()
+    tg_id = callback.from_user.id
+    await callback.answer()
+    
+    from .casino import record_casino_game, get_or_create_casino_profile, get_streak_text
+    from database.users import update_balance
+    
+    if tg_id not in _hilo_games:
+        await callback.answer("❌ Игра не найдена", show_alert=True)
+        return
+    
+    game = _hilo_games[tg_id]
+    payout = game["current_win"]
+    bet = game["bet"]
+    
+    await update_balance(session, tg_id, payout)
+    await record_casino_game(session, tg_id, bet, True, game["multiplier"], payout)
+    
+    text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🎯 <b>Выше/Ниже</b>
+
+✅ <b>Ты забрал {payout} ₽!</b>
+
+📊 Раундов пройдено: <b>{game["round"] - 1}</b>
+📈 Итоговый множитель: <b>×{game["multiplier"]:.1f}</b>
+
+🦊 <i>Разумное решение... или трусость?</i>
+"""
+    
+    profile = await get_or_create_casino_profile(session, tg_id)
+    streak_text = get_streak_text(profile)
+    if streak_text:
+        text += f"\n\n{streak_text}"
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_again"))
+    builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
+    
+    del _hilo_games[tg_id]
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+# ==================== ТРИ КАРТЫ ====================
+async def play_cards_game(callback: CallbackQuery, session: AsyncSession, bet: int):
+    """💎 Три карты — найди туза"""
+    import asyncio
+    import random
+    
+    tg_id = callback.from_user.id
+    
+    from .casino import record_casino_game, get_or_create_casino_profile, get_streak_text
+    from database.users import update_balance
+    
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    msg = await callback.message.answer(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"💎 <b>Три карты</b>\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"<i>Лиса раскладывает три карты...</i>"
+    )
+    await asyncio.sleep(1.5)
+    
+    # Позиция туза (0, 1, или 2)
+    ace_pos = random.randint(0, 2)
+    
+    # Сохраняем состояние для этого tg_id
+    _cards_games[tg_id] = {"ace_pos": ace_pos, "bet": bet}
+    
+    text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+💎 <b>Три карты</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+🎴 🎴 🎴
+
+<b>Одна из карт — Туз ♠️</b>
+<i>Найди его и получи ×2</i>
+
+🦊 <i>Лиса перемешивает карты...</i>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="1️⃣", callback_data="fox_cards_0"),
+        InlineKeyboardButton(text="2️⃣", callback_data="fox_cards_1"),
+        InlineKeyboardButton(text="3️⃣", callback_data="fox_cards_2"),
+    )
+    
+    await msg.edit_text(text, reply_markup=builder.as_markup())
+
+
+_cards_games: dict[int, dict] = {}
+
+
+@router.callback_query(F.data.startswith("fox_cards_"))
+async def handle_cards_pick(callback: CallbackQuery, session: AsyncSession):
+    """Выбор карты"""
+    import asyncio
+    import random
+    
+    await ensure_db()
+    tg_id = callback.from_user.id
+    await callback.answer()
+    
+    from .casino import record_casino_game, get_or_create_casino_profile, get_streak_text
+    from database.users import update_balance
+    
+    if tg_id not in _cards_games:
+        await callback.answer("❌ Игра не найдена", show_alert=True)
+        return
+    
+    game = _cards_games[tg_id]
+    picked = int(callback.data.replace("fox_cards_", ""))
+    ace_pos = game["ace_pos"]
+    bet = game["bet"]
+    
+    # Анимация
+    await callback.message.edit_text(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"💎 <b>Три карты</b>\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"<i>Ты выбрал карту {picked + 1}...</i>\n\n"
+        f"🦊 <i>Лиса переворачивает...</i>"
+    )
+    await asyncio.sleep(2.0)
+    
+    # Показываем результат
+    cards = ["❌", "❌", "❌"]
+    cards[ace_pos] = "🅰️"
+    cards_display = " ".join(cards)
+    
+    builder = InlineKeyboardBuilder()
+    
+    if picked == ace_pos:
+        # Выигрыш!
+        payout = bet * 2
+        await update_balance(session, tg_id, payout)
+        await record_casino_game(session, tg_id, bet, True, 2.0, payout)
+        
+        text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+💎 <b>Три карты</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+{cards_display}
+
+🎉 <b>ТЫ НАШЁЛ ТУЗА!</b>
+💰 Выигрыш: <b>{payout} ₽</b>
+
+🦊 <i>Лиса недовольно морщится.</i>
+"""
+    else:
+        # Проигрыш
+        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        
+        # Near miss - показываем что туз был рядом
+        near_miss = ""
+        if abs(picked - ace_pos) == 1:
+            near_miss = "\n\n<i>Он был прямо рядом...</i>"
+        
+        text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+💎 <b>Три карты</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+{cards_display}
+
+❌ <b>Не та карта...</b>
+💸 Ты потерял <b>{bet} ₽</b>{near_miss}
+
+🦊 <i>Лиса забирает карты.</i>
+"""
+    
+    profile = await get_or_create_casino_profile(session, tg_id)
+    streak_text = get_streak_text(profile)
+    if streak_text:
+        text += f"\n\n{streak_text}"
+    
+    builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_again"))
+    builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
+    
+    del _cards_games[tg_id]
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+# ==================== КРАСНОЕ/ЧЁРНОЕ ====================
+_redblack_games: dict[int, dict] = {}
+
+async def play_redblack_game(callback: CallbackQuery, session: AsyncSession, bet: int):
+    """🔴 Красное/Чёрное"""
+    import asyncio
+    import random
+    
+    tg_id = callback.from_user.id
+    
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    # Сохраняем ставку
+    _redblack_games[tg_id] = {"bet": bet, "streak": 0}
+    
+    msg = await callback.message.answer(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"🔴 <b>Красное/Чёрное</b>\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"<i>Лиса крутит рулетку...</i>"
+    )
+    await asyncio.sleep(1.2)
+    
+    text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🔴 <b>Красное/Чёрное</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+🎰 Рулетка готова!
+
+<b>Выбери цвет:</b>
+<i>Угадай — удвой ставку</i>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="🔴 Красное", callback_data="fox_rb_red"),
+        InlineKeyboardButton(text="⚫ Чёрное", callback_data="fox_rb_black"),
+    )
+    
+    await msg.edit_text(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("fox_rb_"))
+async def handle_redblack_pick(callback: CallbackQuery, session: AsyncSession):
+    """Выбор цвета"""
+    import asyncio
+    import random
+    
+    await ensure_db()
+    tg_id = callback.from_user.id
+    await callback.answer()
+    
+    from .casino import record_casino_game, get_or_create_casino_profile, get_streak_text
+    from database.users import update_balance
+    
+    if tg_id not in _redblack_games:
+        await callback.answer("❌ Игра не найдена", show_alert=True)
+        return
+    
+    game = _redblack_games[tg_id]
+    choice = callback.data.replace("fox_rb_", "")
+    bet = game["bet"]
+    
+    # Крутим рулетку (шанс не 50/50, а 48/52 в пользу казино)
+    # Также учитываем "серии" — после 3 одинаковых цветов шанс смены выше
+    roll = random.randint(1, 100)
+    
+    # Базовые шансы: 48% красное, 48% чёрное, 4% зеро
+    if roll <= 48:
+        result = "red"
+    elif roll <= 96:
+        result = "black"
+    else:
+        result = "zero"  # Зеро — всегда проигрыш
+    
+    # Анимация
+    await callback.message.edit_text(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+        f"🔴 <b>Красное/Чёрное</b>\n"
+        f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+        f"🎰 <i>Рулетка крутится...</i>"
+    )
+    await asyncio.sleep(1.5)
+    
+    # Эмодзи для анимации
+    colors = ["🔴", "⚫", "🔴", "⚫", "🟢", "🔴", "⚫"]
+    random.shuffle(colors)
+    
+    for i in range(4):
+        try:
+            await callback.message.edit_text(
+                f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+                f"🔴 <b>Красное/Чёрное</b>\n"
+                f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+                f"🎰 [ {colors[i % len(colors)]} ]"
+            )
+        except Exception:
+            pass
+        await asyncio.sleep(0.4)
+    
+    await asyncio.sleep(0.8)
+    
+    # Результат
+    result_emoji = "🔴" if result == "red" else ("⚫" if result == "black" else "🟢")
+    result_name = "Красное" if result == "red" else ("Чёрное" if result == "black" else "Зеро")
+    
+    builder = InlineKeyboardBuilder()
+    
+    if result == "zero":
+        # Зеро — всегда проигрыш
+        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        
+        text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🔴 <b>Красное/Чёрное</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+🎰 [ {result_emoji} ]
+
+🟢 <b>ЗЕРО!</b>
+💸 Ты потерял <b>{bet} ₽</b>
+
+🦊 <i>Лиса улыбается: "Везёт не всем."</i>
+"""
+    elif (choice == "red" and result == "red") or (choice == "black" and result == "black"):
+        # Выигрыш!
+        payout = bet * 2
+        await update_balance(session, tg_id, payout)
+        await record_casino_game(session, tg_id, bet, True, 2.0, payout)
+        
+        text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🔴 <b>Красное/Чёрное</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+🎰 [ {result_emoji} ]
+
+✅ <b>{result_name}! Ты угадал!</b>
+💰 Выигрыш: <b>{payout} ₽</b>
+
+🦊 <i>Лиса молча пододвигает фишки.</i>
+"""
+    else:
+        # Проигрыш
+        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        
+        text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🔴 <b>Красное/Чёрное</b>
+💰 Ставка: <b>{bet} ₽</b>
+
+🎰 [ {result_emoji} ]
+
+❌ <b>{result_name}...</b>
+💸 Ты потерял <b>{bet} ₽</b>
+
+🦊 <i>Лиса забирает ставку.</i>
+"""
+    
+    profile = await get_or_create_casino_profile(session, tg_id)
+    streak_text = get_streak_text(profile)
+    if streak_text:
+        text += f"\n\n{streak_text}"
+    
+    builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_again"))
+    builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
+    
+    del _redblack_games[tg_id]
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
 @router.callback_query(F.data == "fox_casino_take")
 async def handle_casino_take(callback: CallbackQuery, session: AsyncSession):
     """Забрать ×1.5"""
@@ -1566,7 +2449,7 @@ async def handle_casino_take(callback: CallbackQuery, session: AsyncSession):
         text += f"\n\n{streak_text}"
     
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_enter"))
+    builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_again"))
     builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
@@ -1640,7 +2523,7 @@ async def handle_casino_risk(callback: CallbackQuery, session: AsyncSession):
         text += f"\n\n{streak_text}"
     
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_enter"))
+    builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_again"))
     builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
     
     await msg.edit_text(text, reply_markup=builder.as_markup())
