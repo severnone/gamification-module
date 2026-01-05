@@ -153,8 +153,14 @@ async def handle_spin_free(callback: CallbackQuery, session: AsyncSession):
     logger.info(f"[Gamification] fox_spin_free от {callback.from_user.id}")
     await callback.answer()
     
-    # Отправляем начальное сообщение для анимации
-    msg = await callback.message.edit_text(
+    # Удаляем старое сообщение (может содержать фото)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    # Отправляем новое текстовое сообщение для анимации
+    msg = await callback.message.answer(
         "🎰 <b>Крутим барабаны...</b>\n\n"
         "┃ 🔄 ┃ 🔄 ┃ 🔄 ┃\n\n"
         "<i>Удачи!</i>"
@@ -196,8 +202,14 @@ async def handle_spin_coins(callback: CallbackQuery, session: AsyncSession):
     logger.info(f"[Gamification] fox_spin_coins от {callback.from_user.id}")
     await callback.answer()
     
-    # Отправляем начальное сообщение для анимации
-    msg = await callback.message.edit_text(
+    # Удаляем старое сообщение (может содержать фото)
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    # Отправляем новое текстовое сообщение для анимации
+    msg = await callback.message.answer(
         "🎰 <b>Крутим барабаны...</b>\n\n"
         "┃ 🔄 ┃ 🔄 ┃ 🔄 ┃\n\n"
         "<i>Удачи!</i>"
