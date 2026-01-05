@@ -1500,3 +1500,48 @@ async def cmd_fox_daily_notify(message: Message, session: AsyncSession):
     sent = await send_daily_notifications(message.bot, session)
     
     await message.answer(f"✅ <b>Отправлено:</b> {sent} уведомлений")
+
+
+# ==================== РЕФЕРАЛЫ ====================
+
+@router.callback_query(F.data == "fox_referrals")
+async def handle_referrals(callback: CallbackQuery, session: AsyncSession):
+    """Страница рефералов"""
+    await ensure_db()
+    logger.info(f"[Gamification] fox_referrals от {callback.from_user.id}")
+    
+    from .referrals import generate_referral_link, REFERRER_BONUS, REFERRED_BONUS
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    
+    # Получаем username бота
+    bot_info = await callback.bot.get_me()
+    ref_link = generate_referral_link(bot_info.username, callback.from_user.id)
+    
+    text = f"""🎁 <b>Реферальная программа</b>
+
+Пригласи друга и получи бонус!
+
+<b>Твоя ссылка:</b>
+<code>{ref_link}</code>
+
+<b>Награды:</b>
+• Ты получишь: <b>{REFERRER_BONUS}</b> 🪙
+• Друг получит: <b>{REFERRED_BONUS}</b> 🪙
+
+<i>Бонус начисляется когда друг сыграет первую игру!</i>
+
+📊 <b>Твоя статистика:</b>
+👥 Приглашено: <b>{player.total_referrals}</b> чел.
+💰 Заработано: <b>{player.total_referrals * REFERRER_BONUS}</b> 🪙
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(
+        text="📤 Поделиться ссылкой",
+        switch_inline_query=f"Заходи в Логово Лисы! 🦊 Испытай удачу и получи бонусы: {ref_link}"
+    ))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+    await callback.answer()

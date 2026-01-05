@@ -485,6 +485,15 @@ async def play_game(
     except Exception as e:
         logger.warning(f"[Gamification] Ошибка обновления квестов: {e}")
     
+    # Реферальный бонус при первой игре
+    try:
+        from .referrals import give_referral_bonus
+        ref_result = await give_referral_bonus(session, tg_id)
+        if ref_result:
+            logger.info(f"[Gamification] Реф бонус: {tg_id} от {ref_result['referrer_id']}")
+    except Exception as e:
+        logger.warning(f"[Gamification] Ошибка реферального бонуса: {e}")
+    
     logger.info(
         f"[Gamification] Игра {tg_id}: {game_type} [{symbols}] -> {prize.rarity} {prize.prize_type}:{prize.value}"
     )

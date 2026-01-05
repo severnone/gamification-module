@@ -21,7 +21,10 @@ def build_fox_den_menu() -> InlineKeyboardMarkup:
         InlineKeyboardButton(text=BTN_QUESTS, callback_data="fox_quests"),
         InlineKeyboardButton(text="📅 Календарь", callback_data="fox_calendar"),
     )
-    builder.row(InlineKeyboardButton(text="📊 Лидерборд", callback_data="fox_leaderboard"))
+    builder.row(
+        InlineKeyboardButton(text="📊 Лидерборд", callback_data="fox_leaderboard"),
+        InlineKeyboardButton(text="🎁 Рефералы", callback_data="fox_referrals"),
+    )
     builder.row(
         InlineKeyboardButton(text=BTN_MY_PRIZES, callback_data="fox_my_prizes"),
         InlineKeyboardButton(text=BTN_BALANCE, callback_data="fox_balance"),

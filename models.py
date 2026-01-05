@@ -36,6 +36,11 @@ class FoxPlayer(Base):
     calendar_day = Column(Integer, default=0, nullable=False)  # Текущий день (0-7)
     last_calendar_claim = Column(DateTime, nullable=True)  # Когда забрал последнюю награду
     
+    # Рефералы
+    invited_by = Column(BigInteger, nullable=True)  # Кто пригласил (tg_id)
+    referral_bonus_given = Column(Boolean, default=False, nullable=False)  # Бонус за реферала выдан
+    total_referrals = Column(Integer, default=0, nullable=False)  # Сколько пригласил
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
