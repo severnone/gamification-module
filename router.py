@@ -46,7 +46,7 @@ def build_back_to_den_kb() -> InlineKeyboardMarkup:
 
 
 # === РЕЖИМ ТЕСТИРОВАНИЯ (True = бесконечные попытки) ===
-TEST_MODE = False
+TEST_MODE = False  # Тестовый режим мини-игр отключён
 
 # === РЕЖИМ ДОРАБОТКИ (True = только админы могут войти) ===
 MAINTENANCE_MODE = True
@@ -1488,49 +1488,102 @@ async def handle_casino_enter(callback: CallbackQuery, session: AsyncSession):
 # Временное хранилище выбранной игры
 _casino_selected_game: dict[int, str] = {}
 
-# Кулдауны по играм (отдельно для каждой игры!)
-# Формат: {tg_id: {game_type: datetime}}
-_game_cooldowns: dict[int, dict[str, datetime]] = {}
+# ==================== НОВАЯ СИСТЕМА КУЛДАУНОВ ====================
+# Формат: {tg_id: {game_type: {"cooldown_until": datetime, "lose_streak": int}}}
+_game_state: dict[int, dict[str, dict]] = {}
 
-GAME_COOLDOWN_SECONDS = 30  # Кулдаун после проигрыша
+
+def get_game_state(tg_id: int, game_type: str) -> dict:
+    """Получить состояние игры для игрока"""
+    if tg_id not in _game_state:
+        _game_state[tg_id] = {}
+    if game_type not in _game_state[tg_id]:
+        _game_state[tg_id][game_type] = {"cooldown_until": None, "lose_streak": 0}
+    return _game_state[tg_id][game_type]
 
 
 def check_game_cooldown(tg_id: int, game_type: str) -> tuple[bool, int]:
     """Проверить кулдаун для конкретной игры. Возвращает (can_play, seconds_left)"""
     from .casino import CASINO_TEST_MODE
     
-    # В тестовом режиме кулдаунов нет
     if CASINO_TEST_MODE:
         return True, 0
     
-    if tg_id not in _game_cooldowns:
-        return True, 0
+    state = get_game_state(tg_id, game_type)
+    cooldown_until = state.get("cooldown_until")
     
-    if game_type not in _game_cooldowns[tg_id]:
-        return True, 0
-    
-    cooldown_until = _game_cooldowns[tg_id][game_type]
-    now = datetime.utcnow()
-    
-    if cooldown_until > now:
-        seconds_left = int((cooldown_until - now).total_seconds())
+    if cooldown_until and cooldown_until > datetime.utcnow():
+        seconds_left = int((cooldown_until - datetime.utcnow()).total_seconds())
         return False, seconds_left
     
     return True, 0
 
 
-def set_game_cooldown(tg_id: int, game_type: str):
+def get_lose_streak(tg_id: int, game_type: str) -> int:
+    """Получить текущую серию проигрышей"""
+    return get_game_state(tg_id, game_type).get("lose_streak", 0)
+
+
+def should_show_last_chance(tg_id: int, game_type: str) -> bool:
+    """Проверить, нужно ли показать 'Последний шанс' (перед 3-м или 5-м проигрышем)"""
+    from .casino import (
+        COOLDOWN_THRESHOLD_SMALL, COOLDOWN_THRESHOLD_BIG
+    )
+    streak = get_lose_streak(tg_id, game_type)
+    # Показываем перед 3-м и перед 5-м проигрышем
+    return streak == COOLDOWN_THRESHOLD_SMALL - 1 or streak == COOLDOWN_THRESHOLD_BIG - 1
+
+
+def set_game_cooldown(tg_id: int, game_type: str, seconds: int):
     """Установить кулдаун для конкретной игры"""
-    if tg_id not in _game_cooldowns:
-        _game_cooldowns[tg_id] = {}
-    
-    _game_cooldowns[tg_id][game_type] = datetime.utcnow() + timedelta(seconds=GAME_COOLDOWN_SECONDS)
+    state = get_game_state(tg_id, game_type)
+    state["cooldown_until"] = datetime.utcnow() + timedelta(seconds=seconds)
 
 
 def clear_game_cooldown(tg_id: int, game_type: str):
-    """Сбросить кулдаун для игры (при выигрыше)"""
-    if tg_id in _game_cooldowns and game_type in _game_cooldowns[tg_id]:
-        del _game_cooldowns[tg_id][game_type]
+    """Сбросить кулдаун и серию проигрышей (при выигрыше)"""
+    state = get_game_state(tg_id, game_type)
+    state["cooldown_until"] = None
+    state["lose_streak"] = 0
+
+
+def increment_lose_streak(tg_id: int, game_type: str) -> int:
+    """Увеличить серию проигрышей и вернуть новое значение"""
+    state = get_game_state(tg_id, game_type)
+    state["lose_streak"] = state.get("lose_streak", 0) + 1
+    return state["lose_streak"]
+
+
+def apply_cooldown_if_needed(tg_id: int, game_type: str) -> tuple[bool, int]:
+    """
+    Применить кулдаун если нужно. Возвращает (cooldown_applied, seconds).
+    - 1-2 проигрыша → без ограничений
+    - 3 проигрыша → 30-60 сек
+    - 5 проигрышей → 10-30 мин
+    """
+    import random
+    from .casino import (
+        COOLDOWN_THRESHOLD_SMALL, COOLDOWN_SMALL_MIN, COOLDOWN_SMALL_MAX,
+        COOLDOWN_THRESHOLD_BIG, COOLDOWN_BIG_MIN, COOLDOWN_BIG_MAX
+    )
+    
+    streak = get_lose_streak(tg_id, game_type)
+    
+    if streak >= COOLDOWN_THRESHOLD_BIG:
+        # 5+ проигрышей → большой кулдаун (10-30 мин)
+        seconds = random.randint(COOLDOWN_BIG_MIN, COOLDOWN_BIG_MAX)
+        set_game_cooldown(tg_id, game_type, seconds)
+        # Сбрасываем серию после кулдауна
+        get_game_state(tg_id, game_type)["lose_streak"] = 0
+        return True, seconds
+    
+    elif streak >= COOLDOWN_THRESHOLD_SMALL:
+        # 3-4 проигрыша → маленький кулдаун (30-60 сек)
+        seconds = random.randint(COOLDOWN_SMALL_MIN, COOLDOWN_SMALL_MAX)
+        set_game_cooldown(tg_id, game_type, seconds)
+        return True, seconds
+    
+    return False, 0
 
 
 async def record_game_with_cooldown(
@@ -1541,20 +1594,26 @@ async def record_game_with_cooldown(
     multiplier: float, 
     payout: int,
     game_type: str = None
-):
-    """Записать игру и установить/сбросить кулдаун для конкретной игры."""
+) -> tuple[bool, int]:
+    """
+    Записать игру и управлять кулдауном.
+    Возвращает (cooldown_applied, seconds) для отображения в UI.
+    """
     from .casino import record_casino_game
     
     await record_casino_game(session, tg_id, bet, won, multiplier, payout)
     
-    # Управляем кулдауном для конкретной игры
     if game_type is None:
         game_type = _casino_selected_game.get(tg_id, "dice")
     
     if won:
         clear_game_cooldown(tg_id, game_type)
+        return False, 0
     else:
-        set_game_cooldown(tg_id, game_type)
+        # Увеличиваем серию проигрышей
+        increment_lose_streak(tg_id, game_type)
+        # Применяем кулдаун если нужно
+        return apply_cooldown_if_needed(tg_id, game_type)
 
 
 @router.callback_query(F.data.startswith("fox_casino_game_"))
@@ -1613,13 +1672,27 @@ async def handle_casino_game_select(callback: CallbackQuery, session: AsyncSessi
     profile = await get_or_create_casino_profile(session, tg_id)
     jackpot = await get_current_jackpot(session)
     
+    # Проверяем серию проигрышей для "Последнего шанса"
+    lose_streak = get_lose_streak(tg_id, game_type)
+    last_chance_warning = ""
+    
+    if should_show_last_chance(tg_id, game_type):
+        last_chance_warning = f"""
+⚠️ <b>ПОСЛЕДНИЙ ШАНС!</b>
+У тебя <b>{lose_streak}</b> проигрыша подряд.
+Следующий проигрыш включит кулдаун!
+
+"""
+    elif lose_streak > 0:
+        last_chance_warning = f"\n🔥 Серия проигрышей: <b>{lose_streak}</b>\n"
+    
     text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
 <b>{game_name}</b>
 
 💰 Баланс: <b>{balance} ₽</b>
 🏆 Джекпот: <b>{jackpot} ₽</b>
-
+{last_chance_warning}
 Выбери ставку:
 """
     
@@ -1634,6 +1707,10 @@ async def handle_casino_game_select(callback: CallbackQuery, session: AsyncSessi
             builder.row(*row[2:])
     else:
         text += "\n<i>Недостаточно средств для игры</i>"
+    
+    # Если "Последний шанс" — добавляем кнопку остановиться
+    if should_show_last_chance(tg_id, game_type):
+        builder.row(InlineKeyboardButton(text="🛑 Остановиться", callback_data="fox_casino_exit"))
     
     builder.row(InlineKeyboardButton(text="⬅️ К играм", callback_data="fox_casino_enter"))
     builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
@@ -1771,9 +1848,17 @@ async def play_dice_game(callback: CallbackQuery, session: AsyncSession, bet: in
         # Финальный результат
         text = format_result_message(result)
         
-        # Устанавливаем кулдаун для игры "dice"
+        # Обрабатываем кулдаун через новую систему
         if result.outcome in ("lose", "near_miss"):
-            set_game_cooldown(tg_id, "dice")
+            increment_lose_streak(tg_id, "dice")
+            cooldown_applied, cooldown_seconds = apply_cooldown_if_needed(tg_id, "dice")
+            
+            if cooldown_applied:
+                minutes = cooldown_seconds // 60
+                if minutes > 0:
+                    text += f"\n\n⏳ <b>Кулдаун: {minutes} мин</b>\n<i>Лиса советует отдохнуть...</i>"
+                else:
+                    text += f"\n\n⏳ <b>Кулдаун: {cooldown_seconds} сек</b>"
         else:
             clear_game_cooldown(tg_id, "dice")
         
@@ -2706,13 +2791,21 @@ async def handle_casino_risk(callback: CallbackQuery, session: AsyncSession):
     # Результат
     result = await play_casino_phase2_risk(session, tg_id, bet)
     
-    # Устанавливаем кулдаун для игры "dice"
+    # Обрабатываем кулдаун через новую систему
+    text = format_result_message(result)
+    
     if result.outcome == "lose":
-        set_game_cooldown(tg_id, "dice")
+        increment_lose_streak(tg_id, "dice")
+        cooldown_applied, cooldown_seconds = apply_cooldown_if_needed(tg_id, "dice")
+        
+        if cooldown_applied:
+            minutes = cooldown_seconds // 60
+            if minutes > 0:
+                text += f"\n\n⏳ <b>Кулдаун: {minutes} мин</b>\n<i>Лиса советует отдохнуть...</i>"
+            else:
+                text += f"\n\n⏳ <b>Кулдаун: {cooldown_seconds} сек</b>"
     else:
         clear_game_cooldown(tg_id, "dice")
-    
-    text = format_result_message(result)
     
     # Показать серию
     profile = await get_or_create_casino_profile(session, tg_id)
