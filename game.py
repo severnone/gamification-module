@@ -197,90 +197,162 @@ def roll_slots() -> list[str]:
 # ==================== АНИМАЦИЯ ====================
 
 async def animate_slots(message: Message, final_symbols: list[str]) -> None:
-    """Анимация слотов через редактирование сообщения"""
+    """Анимация слотов — классические барабаны"""
     
-    spinning = "🔄"
+    spinning = "❓"
+    random_symbols = list(SYMBOL_WEIGHTS.keys())
     
-    # Фаза 1: Все крутятся
+    # Фаза 1: Все крутятся быстро
     await message.edit_text(
-        f"🎰 <b>Барабаны крутятся...</b>\n\n"
-        f"┃ {spinning} ┃ {spinning} ┃ {spinning} ┃\n\n"
-        f"<i>Удачи!</i>"
+        "🎰 <b>СЛОТЫ</b>\n\n"
+        "╔═══╦═══╦═══╗\n"
+        f"║ {spinning} ║ {spinning} ║ {spinning} ║\n"
+        "╚═══╩═══╩═══╝\n\n"
+        "🔥 <i>Барабаны раскручиваются...</i>"
     )
-    await asyncio.sleep(0.8)
+    await asyncio.sleep(1.2)
     
-    # Фаза 2: Первый остановился
-    await message.edit_text(
-        f"🎰 <b>Барабаны крутятся...</b>\n\n"
-        f"┃ {final_symbols[0]} ┃ {spinning} ┃ {spinning} ┃\n\n"
-        f"<i>Ещё немного...</i>"
-    )
-    await asyncio.sleep(0.7)
-    
-    # Фаза 3: Второй остановился
-    await message.edit_text(
-        f"🎰 <b>Барабаны крутятся...</b>\n\n"
-        f"┃ {final_symbols[0]} ┃ {final_symbols[1]} ┃ {spinning} ┃\n\n"
-        f"<i>Последний...</i>"
-    )
-    await asyncio.sleep(0.6)
-
-
-async def animate_chest(message: Message) -> None:
-    """Анимация открытия сундука"""
-    
-    await message.edit_text(
-        "📦 <b>Сундук Лисы</b>\n\n"
-        "🔒 Сундук закрыт...\n\n"
-        "<i>Открываем...</i>"
-    )
-    await asyncio.sleep(0.8)
-    
-    await message.edit_text(
-        "📦 <b>Сундук Лисы</b>\n\n"
-        "🔓 Замок открывается...\n\n"
-        "<i>Что внутри?</i>"
-    )
-    await asyncio.sleep(0.7)
-    
-    await message.edit_text(
-        "📦 <b>Сундук Лисы</b>\n\n"
-        "✨ Сундук открывается...\n\n"
-        "<i>Сияние!</i>"
-    )
-    await asyncio.sleep(0.5)
-
-
-async def animate_wheel(message: Message, final_position: int) -> None:
-    """Анимация колеса удачи"""
-    
-    wheel_positions = ["🔴", "🟠", "🟡", "🟢", "🔵", "🟣", "⚫", "⚪"]
-    
-    await message.edit_text(
-        "🎡 <b>Колесо Удачи</b>\n\n"
-        f"{'  '.join(wheel_positions)}\n"
-        f"      ⬆️\n\n"
-        "<i>Колесо раскручивается...</i>"
-    )
-    await asyncio.sleep(0.6)
-    
-    # Несколько "поворотов"
-    for i in range(3):
-        rotated = wheel_positions[i:] + wheel_positions[:i]
+    # Фаза 2: Мелькают случайные символы
+    for _ in range(3):
+        s1, s2, s3 = random.choices(random_symbols, k=3)
         await message.edit_text(
-            "🎡 <b>Колесо Удачи</b>\n\n"
-            f"{'  '.join(rotated)}\n"
-            f"      ⬆️\n\n"
-            "<i>Крутится...</i>"
+            "🎰 <b>СЛОТЫ</b>\n\n"
+            "╔═══╦═══╦═══╗\n"
+            f"║ {s1} ║ {s2} ║ {s3} ║\n"
+            "╚═══╩═══╩═══╝\n\n"
+            "🎲 <i>Крутятся...</i>"
         )
         await asyncio.sleep(0.4)
     
+    # Фаза 3: Первый остановился
     await message.edit_text(
-        "🎡 <b>Колесо Удачи</b>\n\n"
-        "✨ Колесо замедляется...\n\n"
-        "<i>Почти остановилось!</i>"
+        "🎰 <b>СЛОТЫ</b>\n\n"
+        "╔═══╦═══╦═══╗\n"
+        f"║ {final_symbols[0]} ║ {spinning} ║ {spinning} ║\n"
+        "╚═══╩═══╩═══╝\n\n"
+        "⏳ <i>Первый барабан...</i>"
     )
-    await asyncio.sleep(0.5)
+    await asyncio.sleep(1.0)
+    
+    # Фаза 4: Второй остановился
+    await message.edit_text(
+        "🎰 <b>СЛОТЫ</b>\n\n"
+        "╔═══╦═══╦═══╗\n"
+        f"║ {final_symbols[0]} ║ {final_symbols[1]} ║ {spinning} ║\n"
+        "╚═══╩═══╩═══╝\n\n"
+        "⏳ <i>Второй барабан...</i>"
+    )
+    await asyncio.sleep(1.2)
+    
+    # Фаза 5: Последний (самый важный!)
+    await message.edit_text(
+        "🎰 <b>СЛОТЫ</b>\n\n"
+        "╔═══╦═══╦═══╗\n"
+        f"║ {final_symbols[0]} ║ {final_symbols[1]} ║ ❓ ║\n"
+        "╚═══╩═══╩═══╝\n\n"
+        "🤞 <i>Последний барабан...</i>"
+    )
+    await asyncio.sleep(1.5)
+
+
+async def animate_chest(message: Message, chosen_chest: int) -> None:
+    """Анимация сундуков — выбор из трёх"""
+    
+    # Фаза 1: Три закрытых сундука
+    await message.edit_text(
+        "📦 <b>СУНДУКИ ЛИСЫ</b>\n\n"
+        "🦊 Лиса спрятала приз в один из сундуков!\n\n"
+        "  📦      📦      📦\n"
+        "   1        2        3\n\n"
+        "<i>Выбираем сундук...</i>"
+    )
+    await asyncio.sleep(1.5)
+    
+    # Фаза 2: Выбор сундука
+    chests = ["📦", "📦", "📦"]
+    chests[chosen_chest] = "👆"
+    await message.edit_text(
+        "📦 <b>СУНДУКИ ЛИСЫ</b>\n\n"
+        "🎯 Выбран сундук!\n\n"
+        f"  {chests[0]}      {chests[1]}      {chests[2]}\n"
+        "   1        2        3\n\n"
+        f"<i>Открываем сундук {chosen_chest + 1}...</i>"
+    )
+    await asyncio.sleep(1.2)
+    
+    # Фаза 3: Сундук трясётся
+    for shake in ["📦💨", "💨📦", "📦✨"]:
+        chests_shake = ["📦", "📦", "📦"]
+        chests_shake[chosen_chest] = shake
+        await message.edit_text(
+            "📦 <b>СУНДУКИ ЛИСЫ</b>\n\n"
+            "🔓 Открываем...\n\n"
+            f"  {chests_shake[0]}    {chests_shake[1]}    {chests_shake[2]}\n"
+            "   1        2        3\n\n"
+            "<i>Что же внутри?!</i>"
+        )
+        await asyncio.sleep(0.6)
+    
+    # Фаза 4: Сундук открывается
+    chests_open = ["📦", "📦", "📦"]
+    chests_open[chosen_chest] = "🎁"
+    await message.edit_text(
+        "📦 <b>СУНДУКИ ЛИСЫ</b>\n\n"
+        "✨ Сундук открыт!\n\n"
+        f"  {chests_open[0]}      {chests_open[1]}      {chests_open[2]}\n"
+        "   1        2        3\n\n"
+        "<i>Смотрим приз...</i>"
+    )
+    await asyncio.sleep(1.0)
+
+
+async def animate_wheel(message: Message, final_sector: int) -> None:
+    """Анимация колеса удачи — настоящее колесо"""
+    
+    # Секторы колеса
+    sectors = ["🦊", "💎", "🪙", "🍀", "⭐", "💰", "🎁", "❌"]
+    
+    # Фаза 1: Колесо готово
+    wheel_display = """
+        🍀  💎  🦊
+      ⭐          🪙
+        💰  🎁  ❌
+    """
+    await message.edit_text(
+        "🎡 <b>КОЛЕСО УДАЧИ</b>\n\n"
+        f"{wheel_display}\n"
+        "        ⬆️\n\n"
+        "<i>Крутим колесо...</i>"
+    )
+    await asyncio.sleep(1.0)
+    
+    # Фаза 2: Колесо крутится (показываем разные символы под стрелкой)
+    spin_sequence = random.sample(sectors, len(sectors)) * 2  # 16 позиций
+    
+    for i, symbol in enumerate(spin_sequence[:8]):
+        speed_text = "🔥 Быстро!" if i < 3 else "⏳ Замедляется..." if i < 6 else "🎯 Почти..."
+        await message.edit_text(
+            "🎡 <b>КОЛЕСО УДАЧИ</b>\n\n"
+            f"     ╔═════╗\n"
+            f"     ║  {symbol}  ║\n"
+            f"     ╚═════╝\n"
+            f"        ⬆️\n\n"
+            f"<i>{speed_text}</i>"
+        )
+        # Замедляемся постепенно
+        delay = 0.3 + (i * 0.15)
+        await asyncio.sleep(min(delay, 0.8))
+    
+    # Фаза 3: Финальная остановка
+    final_symbol = sectors[final_sector % len(sectors)]
+    await message.edit_text(
+        "🎡 <b>КОЛЕСО УДАЧИ</b>\n\n"
+        f"     ╔═════╗\n"
+        f"  ➤  ║  {final_symbol}  ║  ◄\n"
+        f"     ╚═════╝\n\n"
+        "<i>Колесо остановилось!</i>"
+    )
+    await asyncio.sleep(1.2)
 
 
 # ==================== ОСНОВНАЯ ИГРА ====================
@@ -367,15 +439,19 @@ async def play_game(
     # Крутим символы
     symbols = roll_slots()
     
+    # Случайные параметры для анимаций
+    chosen_chest = random.randint(0, 2)  # Для сундука (0, 1, 2)
+    wheel_sector = random.randint(0, 7)   # Для колеса
+    
     # Анимация (если есть сообщение)
     if message:
         try:
             if game_type == "slots":
                 await animate_slots(message, symbols)
             elif game_type == "chest":
-                await animate_chest(message)
+                await animate_chest(message, chosen_chest)
             elif game_type == "wheel":
-                await animate_wheel(message, random.randint(0, 7))
+                await animate_wheel(message, wheel_sector)
         except Exception as e:
             logger.warning(f"[Gamification] Ошибка анимации: {e}")
     
