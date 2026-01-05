@@ -1776,9 +1776,9 @@ async def play_blackjack_game(callback: CallbackQuery, session: AsyncSession, be
             text += f"\n\n🦊 Лиса: {blackjack_format_hand(dealer_hand)} ({dealer_total})"
             # Ставка возвращается
         else:
-            # Игрок выиграл с блэкджэком (×2.5)
-            payout = int(bet * 2.5)
-            await record_game_with_cooldown(session, tg_id, bet, True, 2.5, payout)
+            # Игрок выиграл с блэкджэком (×2.2)
+            payout = int(bet * 2.2)
+            await record_game_with_cooldown(session, tg_id, bet, True, 2.2, payout)
             
             text += f"\n🎉 <b>БЛЭКДЖЭК! Ты получаешь {payout} ₽!</b>"
             text += f"\n\n🦊 Лиса: {blackjack_format_hand(dealer_hand)} ({dealer_total})"
@@ -1954,9 +1954,9 @@ async def handle_blackjack_stand(callback: CallbackQuery, session: AsyncSession)
     
     # Определяем победителя
     if dealer_total > 21:
-        # Лиса перебрала
-        payout = bet * 2
-        await record_game_with_cooldown(session, tg_id, bet, True, 2.0, payout)
+        # Лиса перебрала (×1.9)
+        payout = int(bet * 1.9)
+        await record_game_with_cooldown(session, tg_id, bet, True, 1.9, payout)
         text += f"💥 <b>Лиса перебрала! Ты получаешь {payout} ₽!</b>"
         text += "\n\n<i>Лиса раздражённо бросает карты.</i>"
     elif dealer_total > player_total:
@@ -1967,9 +1967,9 @@ async def handle_blackjack_stand(callback: CallbackQuery, session: AsyncSession)
         text += f"❌ <b>Лиса выиграла. Ты потерял {bet} ₽</b>{near_miss}"
         text += "\n\n🦊 <i>Лиса забирает своё.</i>"
     elif dealer_total < player_total:
-        # Игрок выиграл
-        payout = bet * 2
-        await record_game_with_cooldown(session, tg_id, bet, True, 2.0, payout)
+        # Игрок выиграл (×1.9)
+        payout = int(bet * 1.9)
+        await record_game_with_cooldown(session, tg_id, bet, True, 1.9, payout)
         text += f"✅ <b>Ты выиграл {payout} ₽!</b>"
         text += "\n\n<i>Лиса молча пододвигает фишки.</i>"
     else:
@@ -2414,10 +2414,10 @@ async def handle_redblack_pick(callback: CallbackQuery, session: AsyncSession):
     # Также учитываем "серии" — после 3 одинаковых цветов шанс смены выше
     roll = random.randint(1, 100)
     
-    # Базовые шансы: 48% красное, 48% чёрное, 4% зеро
-    if roll <= 48:
+    # Базовые шансы: 46% красное, 46% чёрное, 8% зеро
+    if roll <= 46:
         result = "red"
-    elif roll <= 96:
+    elif roll <= 92:
         result = "black"
     else:
         result = "zero"  # Зеро — всегда проигрыш
@@ -2472,9 +2472,9 @@ async def handle_redblack_pick(callback: CallbackQuery, session: AsyncSession):
 🦊 <i>Лиса улыбается: "Везёт не всем."</i>
 """
     elif (choice == "red" and result == "red") or (choice == "black" and result == "black"):
-        # Выигрыш!
-        payout = bet * 2
-        await record_game_with_cooldown(session, tg_id, bet, True, 2.0, payout)
+        # Выигрыш! (×1.9)
+        payout = int(bet * 1.9)
+        await record_game_with_cooldown(session, tg_id, bet, True, 1.9, payout)
         
         text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
