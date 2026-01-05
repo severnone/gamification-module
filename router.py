@@ -97,12 +97,13 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     await check_and_reset_daily_spin(session, callback.from_user.id)
     player = await get_or_create_player(session, callback.from_user.id)
     
-    free_spin_text = "✅ Доступна" if player.free_spins > 0 else "❌ Использована"
+    free_spin_text = "✅ Есть" if player.free_spins > 0 else "❌ Нет"
+    paid_spins_text = f" + 🛒 {player.paid_spins}" if player.paid_spins > 0 else ""
     
     text = f"""🦊 <b>Добро пожаловать в Логово Лисы!</b>
 
 🪙 Лискоины: <b>{player.coins}</b>
-🎫 Бесплатная попытка: <b>{free_spin_text}</b>
+🎫 Ежедневная: <b>{free_spin_text}</b>{paid_spins_text}
 
 🎮 Игр сыграно: <b>{player.total_games}</b>
 🏆 Выигрышей: <b>{player.total_wins}</b>
@@ -129,11 +130,19 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
     
     test_mode_text = "\n🔧 <b>ТЕСТОВЫЙ РЕЖИМ: бесконечные попытки</b>\n" if TEST_MODE else ""
     
+    # Формируем текст попыток
+    spins_parts = []
+    if player.free_spins > 0:
+        spins_parts.append(f"🎫 {player.free_spins}")
+    if player.paid_spins > 0:
+        spins_parts.append(f"🛒 {player.paid_spins}")
+    spins_text = " + ".join(spins_parts) if spins_parts else "❌ Нет"
+    
     text = f"""🎰 <b>Испытать удачу</b>
 
 🦊 Выбери игру!
 {test_mode_text}
-🎫 Попыток: <b>{player.free_spins}</b>
+🎫 Попыток: <b>{spins_text}</b>
 🪙 Лискоинов: <b>{player.coins}</b>
 
 <b>🎰 Слоты</b> — крути барабаны!
@@ -1009,17 +1018,17 @@ async def handle_buy_spin(callback: CallbackQuery, session: AsyncSession):
         await callback.answer("❌ Недостаточно Лискоинов!", show_alert=True)
         return
     
-    # Списываем монеты и добавляем попытку
+    # Списываем монеты и добавляем КУПЛЕННУЮ попытку
+    from .db import add_paid_spin
     await update_player_coins(session, callback.from_user.id, -cost)
-    player.free_spins += 1
-    await session.commit()
+    new_paid_spins = await add_paid_spin(session, callback.from_user.id, 1)
     
     # Показываем экран подтверждения
     text = f"""✅ <b>Попытка куплена!</b>
 
 🎫 Списано: <b>-{cost}</b> 🪙
-🎫 Попыток: <b>{player.free_spins}</b>
-🪙 Осталось: <b>{player.coins - cost}</b> 🪙
+🛒 Купленных попыток: <b>{new_paid_spins}</b>
+🪙 Осталось монет: <b>{player.coins - cost}</b> 🪙
 
 <i>Иди и испытай удачу!</i>
 """

@@ -20,7 +20,8 @@ class FoxPlayer(Base):
     light = Column(Integer, default=0, nullable=False)  # Свет Лисы (редкая валюта)
     
     # Попытки
-    free_spins = Column(Integer, default=1, nullable=False)  # Бесплатные попытки
+    free_spins = Column(Integer, default=1, nullable=False)  # Бесплатные ежедневные попытки
+    paid_spins = Column(Integer, default=0, nullable=False)  # Купленные попытки
     last_free_spin_date = Column(DateTime, nullable=True)  # Дата последней бесплатной попытки
     
     # Статистика

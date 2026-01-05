@@ -355,8 +355,10 @@ async def play_game(
     # В тестовом режиме пропускаем проверку попыток
     if test_mode:
         pass  # Бесконечные попытки
-    elif player.free_spins > 0:
-        success = await use_free_spin(session, tg_id)
+    elif player.free_spins > 0 or player.paid_spins > 0:
+        # Используем попытку (сначала бесплатные, потом купленные)
+        from .db import use_spin
+        success, spin_type = await use_spin(session, tg_id)
         if not success:
             return {
                 "success": False,

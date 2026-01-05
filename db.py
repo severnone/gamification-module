@@ -73,16 +73,59 @@ async def check_and_reset_daily_spin(session: AsyncSession, tg_id: int) -> bool:
     return player.free_spins > 0
 
 
-async def use_free_spin(session: AsyncSession, tg_id: int) -> bool:
-    """Использовать бесплатную попытку. Возвращает True если успешно."""
+async def use_spin(session: AsyncSession, tg_id: int) -> tuple[bool, str]:
+    """
+    Использовать попытку. Сначала бесплатные, потом купленные.
+    Возвращает (успех, тип: 'free' | 'paid' | None).
+    """
+    player = await get_or_create_player(session, tg_id)
+    
+    # Сначала пробуем бесплатную
+    if player.free_spins > 0:
+        await session.execute(
+            update(FoxPlayer)
+            .where(FoxPlayer.tg_id == tg_id)
+            .values(free_spins=FoxPlayer.free_spins - 1)
+        )
+        await session.commit()
+        return True, "free"
+    
+    # Потом купленную
+    if player.paid_spins > 0:
+        await session.execute(
+            update(FoxPlayer)
+            .where(FoxPlayer.tg_id == tg_id)
+            .values(paid_spins=FoxPlayer.paid_spins - 1)
+        )
+        await session.commit()
+        return True, "paid"
+    
+    return False, None
+
+
+async def has_any_spins(session: AsyncSession, tg_id: int) -> bool:
+    """Проверить есть ли хоть одна попытка (бесплатная или купленная)"""
+    player = await get_or_create_player(session, tg_id)
+    return player.free_spins > 0 or player.paid_spins > 0
+
+
+async def add_paid_spin(session: AsyncSession, tg_id: int, count: int = 1) -> int:
+    """Добавить купленные попытки. Возвращает новое количество."""
     result = await session.execute(
         update(FoxPlayer)
-        .where(FoxPlayer.tg_id == tg_id, FoxPlayer.free_spins > 0)
-        .values(free_spins=FoxPlayer.free_spins - 1)
-        .returning(FoxPlayer.free_spins)
+        .where(FoxPlayer.tg_id == tg_id)
+        .values(paid_spins=FoxPlayer.paid_spins + count)
+        .returning(FoxPlayer.paid_spins)
     )
-    success = result.scalar_one_or_none() is not None
+    new_count = result.scalar_one()
     await session.commit()
+    return new_count
+
+
+# Алиас для обратной совместимости
+async def use_free_spin(session: AsyncSession, tg_id: int) -> bool:
+    """Deprecated: используй use_spin()"""
+    success, _ = await use_spin(session, tg_id)
     return success
 
 
