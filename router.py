@@ -48,7 +48,7 @@ TEST_MODE = False
 
 # === РЕЖИМ ДОРАБОТКИ (True = только админы могут войти) ===
 MAINTENANCE_MODE = True
-ADMIN_IDS = [1609908245]  # Заполни свой Telegram ID, например: [123456789]
+ADMIN_IDS = [1609908245, 447153213, 8064244577]  # Telegram ID администраторов модуля
 
 
 def build_game_select_kb() -> InlineKeyboardMarkup:
