@@ -1331,3 +1331,127 @@ async def handle_calendar_claim(callback: CallbackQuery, session: AsyncSession):
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+# ==================== ЛИДЕРБОРД ====================
+
+@router.callback_query(F.data == "fox_leaderboard")
+async def handle_leaderboard(callback: CallbackQuery, session: AsyncSession):
+    """Показать лидерборд — топ за неделю по умолчанию"""
+    await ensure_db()
+    logger.info(f"[Gamification] fox_leaderboard от {callback.from_user.id}")
+    
+    from .leaderboard import get_top_winners_week, format_leaderboard
+    
+    top = await get_top_winners_week(session, limit=10)
+    text = format_leaderboard(top, "wins", "🏆", "📊 <b>Топ-10 за неделю</b>")
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📅 Неделя", callback_data="fox_lb_week"),
+        InlineKeyboardButton(text="📆 Месяц", callback_data="fox_lb_month"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
+        InlineKeyboardButton(text="🪙 Монеты", callback_data="fox_lb_coins"),
+    )
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fox_lb_week")
+async def handle_lb_week(callback: CallbackQuery, session: AsyncSession):
+    """Топ за неделю"""
+    await ensure_db()
+    from .leaderboard import get_top_winners_week, format_leaderboard
+    
+    top = await get_top_winners_week(session, limit=10)
+    text = format_leaderboard(top, "wins", "🏆", "📊 <b>Топ-10 выигрышей за неделю</b>")
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="✅ Неделя", callback_data="fox_lb_week"),
+        InlineKeyboardButton(text="📆 Месяц", callback_data="fox_lb_month"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
+        InlineKeyboardButton(text="🪙 Монеты", callback_data="fox_lb_coins"),
+    )
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fox_lb_month")
+async def handle_lb_month(callback: CallbackQuery, session: AsyncSession):
+    """Топ за месяц"""
+    await ensure_db()
+    from .leaderboard import get_top_winners_month, format_leaderboard
+    
+    top = await get_top_winners_month(session, limit=10)
+    text = format_leaderboard(top, "wins", "🏆", "📊 <b>Топ-10 выигрышей за месяц</b>")
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📅 Неделя", callback_data="fox_lb_week"),
+        InlineKeyboardButton(text="✅ Месяц", callback_data="fox_lb_month"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
+        InlineKeyboardButton(text="🪙 Монеты", callback_data="fox_lb_coins"),
+    )
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fox_lb_streak")
+async def handle_lb_streak(callback: CallbackQuery, session: AsyncSession):
+    """Топ по серии входов"""
+    await ensure_db()
+    from .leaderboard import get_top_streak, format_leaderboard
+    
+    top = await get_top_streak(session, limit=10)
+    text = format_leaderboard(top, "streak", "дней 🔥", "📊 <b>Топ-10 по серии входов</b>")
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📅 Неделя", callback_data="fox_lb_week"),
+        InlineKeyboardButton(text="📆 Месяц", callback_data="fox_lb_month"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="✅ Серия", callback_data="fox_lb_streak"),
+        InlineKeyboardButton(text="🪙 Монеты", callback_data="fox_lb_coins"),
+    )
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fox_lb_coins")
+async def handle_lb_coins(callback: CallbackQuery, session: AsyncSession):
+    """Топ по Лискоинам"""
+    await ensure_db()
+    from .leaderboard import get_top_coins, format_leaderboard
+    
+    top = await get_top_coins(session, limit=10)
+    text = format_leaderboard(top, "coins", "🪙", "📊 <b>Топ-10 по Лискоинам</b>")
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(text="📅 Неделя", callback_data="fox_lb_week"),
+        InlineKeyboardButton(text="📆 Месяц", callback_data="fox_lb_month"),
+    )
+    builder.row(
+        InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
+        InlineKeyboardButton(text="✅ Монеты", callback_data="fox_lb_coins"),
+    )
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+    await callback.answer()
