@@ -10,7 +10,7 @@ from logger import logger
 
 from .db import get_active_prizes, get_or_create_player, check_and_reset_daily_spin
 from .game import SPIN_COST_COINS, format_prize_message, play_game
-from .keyboards import build_fox_den_menu
+from .keyboards import build_fox_den_menu, build_try_luck_menu
 from .texts import (
     BTN_BACK,
     FOX_DEN_BUTTON,
@@ -164,14 +164,14 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession, admin: 
 
 @router.callback_query(F.data == "fox_try_luck")
 async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
-    """Меню выбора игры"""
+    """Подменю 'Испытать удачу' — игры и активности"""
     await ensure_db()
     logger.info(f"[Gamification] fox_try_luck от {callback.from_user.id}")
     
     await check_and_reset_daily_spin(session, callback.from_user.id)
     player = await get_or_create_player(session, callback.from_user.id)
     
-    test_mode_text = "\n🔧 <b>ТЕСТОВЫЙ РЕЖИМ: бесконечные попытки</b>\n" if TEST_MODE else ""
+    test_mode_text = "\n🔧 <b>ТЕСТОВЫЙ РЕЖИМ</b>\n" if TEST_MODE else ""
     
     # Формируем текст попыток
     spins_parts = []
@@ -182,21 +182,25 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
     spins_text = " + ".join(spins_parts) if spins_parts else "❌ Нет"
     
     text = f"""🎰 <b>Испытать удачу</b>
-
-🦊 Выбери игру!
 {test_mode_text}
 🎫 Попыток: <b>{spins_text}</b>
 🦊 Лискоинов: <b>{player.coins}</b>
+✨ Свет Лисы: <b>{player.light}</b>
 
-<b>🎰 Слоты</b> — крути барабаны!
-<b>🎡 Колесо</b> — испытай удачу!
-<b>🦊 Сделка</b> — рискни своими монетами!
+━━━━━━━━━━━━━━━━━━
+<b>🎮 Игры:</b>
+• 🎰 Слоты — крути барабаны
+• 🎡 Колесо — испытай удачу
+• 🦊 Сделка — рискни монетами
+
+<b>📋 Активности:</b>
+• Задания, календарь, рефералы
 """
     
     await edit_or_send_message(
         target_message=callback.message,
         text=text,
-        reply_markup=build_game_select_kb(),
+        reply_markup=build_try_luck_menu(),
     )
     await callback.answer()
 
