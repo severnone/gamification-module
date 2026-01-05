@@ -1948,7 +1948,7 @@ async def play_hilo_game(callback: CallbackQuery, session: AsyncSession, bet: in
     await msg.edit_text(text, reply_markup=builder.as_markup())
 
 
-@router.callback_query(F.data.startswith("fox_hilo_"))
+@router.callback_query(F.data.in_({"fox_hilo_high", "fox_hilo_low", "fox_hilo_five"}))
 async def handle_hilo_guess(callback: CallbackQuery, session: AsyncSession):
     """Обработка догадки в Выше/Ниже"""
     import asyncio
