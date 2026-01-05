@@ -3,6 +3,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton
 
 from handlers.utils import edit_or_send_message
 from hooks.hooks import register_hook
+from logger import logger
 
 from .keyboards import build_fox_den_menu
 from .texts import FOX_DEN_BUTTON, FOX_DEN_WELCOME
@@ -18,14 +19,15 @@ async def add_fox_den_button(**kwargs):
     return {
         "button": InlineKeyboardButton(
             text=FOX_DEN_BUTTON,
-            callback_data="fox:den"
+            callback_data="fox_den"
         )
     }
 
 
-@router.callback_query(F.data == "fox:den")
+@router.callback_query(F.data == "fox_den")
 async def handle_fox_den(callback: CallbackQuery):
     """Главное меню Логова Лисы"""
+    logger.info(f"[Gamification] Открытие Логова Лисы для {callback.from_user.id}")
     await edit_or_send_message(
         target_message=callback.message,
         text=FOX_DEN_WELCOME,
@@ -34,31 +36,24 @@ async def handle_fox_den(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data == "fox:try_luck")
-async def handle_try_luck(callback: CallbackQuery):
-    """Испытать удачу - заглушка"""
-    await callback.answer("🎰 Скоро здесь будет игра!", show_alert=True)
-
-
-@router.callback_query(F.data == "fox:quests")
-async def handle_quests(callback: CallbackQuery):
-    """Задания - заглушка"""
-    await callback.answer("🧰 Задания скоро появятся!", show_alert=True)
-
-
-@router.callback_query(F.data == "fox:my_prizes")
-async def handle_my_prizes(callback: CallbackQuery):
-    """Мои призы - заглушка"""
-    await callback.answer("🎁 Призы скоро появятся!", show_alert=True)
-
-
-@router.callback_query(F.data == "fox:balance")
-async def handle_balance(callback: CallbackQuery):
-    """Баланс - заглушка"""
-    await callback.answer("🪙 Баланс скоро появится!", show_alert=True)
-
-
-@router.callback_query(F.data == "fox:upgrades")
-async def handle_upgrades(callback: CallbackQuery):
-    """Улучшения - заглушка"""
-    await callback.answer("⭐ Улучшения скоро появятся!", show_alert=True)
+@router.callback_query(F.data.startswith("fox_"))
+async def handle_fox_actions(callback: CallbackQuery):
+    """Обработчик всех действий в Логове Лисы"""
+    action = callback.data
+    logger.info(f"[Gamification] Действие: {action} от {callback.from_user.id}")
+    
+    if action == "fox_den":
+        return  # Уже обработано выше
+    
+    if action == "fox_try_luck":
+        await callback.answer("🎰 Скоро здесь будет игра!", show_alert=True)
+    elif action == "fox_quests":
+        await callback.answer("🧰 Задания скоро появятся!", show_alert=True)
+    elif action == "fox_my_prizes":
+        await callback.answer("🎁 Призы скоро появятся!", show_alert=True)
+    elif action == "fox_balance":
+        await callback.answer("🪙 Баланс скоро появится!", show_alert=True)
+    elif action == "fox_upgrades":
+        await callback.answer("⭐ Улучшения скоро появятся!", show_alert=True)
+    else:
+        await callback.answer("Неизвестное действие", show_alert=True)
