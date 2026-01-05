@@ -9,16 +9,15 @@ import os
 # Добавляем корень проекта в путь
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from sqlalchemy import update
-from database.db import get_session
+from sqlalchemy import update, select
+from database.db import async_session_maker
 from modules.gamification.models import FoxPlayer
 
 
 async def add_coins_to_player(tg_id: int, coins: int):
     """Начислить лискоины игроку"""
-    async with get_session() as session:
+    async with async_session_maker() as session:
         # Проверяем существует ли игрок
-        from sqlalchemy import select
         result = await session.execute(
             select(FoxPlayer).where(FoxPlayer.tg_id == tg_id)
         )
