@@ -41,6 +41,10 @@ class FoxPlayer(Base):
     referral_bonus_given = Column(Boolean, default=False, nullable=False)  # Бонус за реферала выдан
     total_referrals = Column(Integer, default=0, nullable=False)  # Сколько пригласил
     
+    # VIP статус
+    is_vip = Column(Boolean, default=False, nullable=False)
+    vip_expires_at = Column(DateTime, nullable=True)  # Когда истекает VIP
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
