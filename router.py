@@ -206,10 +206,8 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
 • 🎡 Колесо — испытай удачу
 • 🦊 Сделка — рискни монетами
 
-<b>📋 Активности:</b>
-• Задания, календарь, рефералы
-
-<i>💡 Бесплатная попытка каждые 3 часа!</i>
+<i>💡 Играй за попытки или за {SPIN_COST_COINS} 🦊</i>
+<i>⏰ Бесплатная попытка каждые 3 часа</i>
 """
     
     await edit_or_send_message(
@@ -450,17 +448,29 @@ async def run_game(callback: CallbackQuery, session: AsyncSession, game_type: st
     if not result["success"]:
         # Понятное сообщение если попытки закончились
         if result["error"] == "no_spins":
-            error_text = """❌ <b>Попытки закончились!</b>
+            player = await get_or_create_player(session, callback.from_user.id)
+            
+            error_text = f"""❌ <b>Попытки закончились!</b>
 
-🎫 У тебя нет бесплатных попыток.
+🦊 Лискоины: <b>{player.coins}</b>
 
-<b>Как получить:</b>
-• ⏰ Бесплатная попытка каждый день
+<b>Варианты:</b>
+• 🦊 Сыграть за {SPIN_COST_COINS} лискоинов
+• ⏰ Подожди бесплатную (каждые 3 часа)
 • 🧰 Выполняй задания
-• ⭐ Купи в улучшениях (30 🦊)
 """
             builder = InlineKeyboardBuilder()
-            builder.row(InlineKeyboardButton(text="⭐ Купить попытку", callback_data="fox_upgrades"))
+            # Кнопка играть за лискоины
+            if player.coins >= SPIN_COST_COINS:
+                builder.row(InlineKeyboardButton(
+                    text=f"🦊 Играть за {SPIN_COST_COINS} лискоинов", 
+                    callback_data=f"fox_play_coins_{game_type}"
+                ))
+            else:
+                builder.row(InlineKeyboardButton(
+                    text=f"🔒 Нужно {SPIN_COST_COINS} 🦊", 
+                    callback_data="fox_no_coins_play"
+                ))
             builder.row(InlineKeyboardButton(text="🧰 Задания", callback_data="fox_quests"))
             builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
             await msg.edit_text(error_text, reply_markup=builder.as_markup())
@@ -499,6 +509,70 @@ async def run_game(callback: CallbackQuery, session: AsyncSession, game_type: st
 async def handle_play_slots(callback: CallbackQuery, session: AsyncSession):
     """Игра в слоты"""
     await run_game(callback, session, "slots")
+
+
+@router.callback_query(F.data.startswith("fox_play_coins_"))
+async def handle_play_for_coins(callback: CallbackQuery, session: AsyncSession):
+    """Играть за лискоины (без попыток)"""
+    await ensure_db()
+    
+    game_type = callback.data.replace("fox_play_coins_", "")
+    tg_id = callback.from_user.id
+    logger.info(f"[Gamification] Игра за лискоины ({game_type}) от {tg_id}")
+    await callback.answer()
+    
+    player = await get_or_create_player(session, tg_id)
+    
+    if player.coins < SPIN_COST_COINS:
+        await callback.answer(f"❌ Нужно {SPIN_COST_COINS} лискоинов!", show_alert=True)
+        return
+    
+    # Удаляем текущее сообщение
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    # Анимация
+    msg = await callback.message.answer("🦊 <i>Лиса принимает ставку...</i>")
+    
+    # Играем за лискоины (use_coins=True)
+    result = await play_game(
+        session, 
+        tg_id, 
+        use_coins=True,  # ← Списываем лискоины
+        message=msg,
+        game_type=game_type,
+        test_mode=False,
+    )
+    
+    if not result["success"]:
+        await msg.edit_text(
+            f"❌ <b>Ошибка:</b> {result['error']}",
+            reply_markup=build_game_select_kb()
+        )
+        return
+    
+    text = format_prize_message(
+        result["game_type"],
+        result["prize"],
+        result["symbols"],
+        result["coins_spent"],
+        result["new_balance"],
+    )
+    
+    await msg.edit_text(text, reply_markup=build_after_game_kb(game_type))
+
+
+@router.callback_query(F.data == "fox_no_coins_play")
+async def handle_no_coins_play(callback: CallbackQuery):
+    """Недостаточно лискоинов для игры"""
+    await callback.answer(
+        f"🔒 Нужно {SPIN_COST_COINS} Лискоинов!\n\n"
+        f"🧰 Выполняй задания\n"
+        f"📅 Заходи каждый день",
+        show_alert=True
+    )
 
 
 @router.callback_query(F.data == "fox_deal")
