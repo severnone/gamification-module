@@ -12,9 +12,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from .models import FoxPlayer
 
 
-# Цены VIP
-VIP_PRICE_LIGHT = 50  # Свет Лисы за 7 дней
-VIP_PRICE_RUB = 99  # Рублей за 7 дней
+# Цены VIP (30 дней)
+VIP_DAYS = 30
+VIP_PRICE_LIGHT = 100  # Свет Лисы за 30 дней
+VIP_PRICE_RUB = 199  # Рублей за 30 дней
 
 # Бонусы VIP
 VIP_EXTRA_SPINS = 1  # Доп. попыток в день
@@ -53,11 +54,14 @@ async def get_vip_days_left(session: AsyncSession, tg_id: int) -> int:
     if not player.is_vip or not player.vip_expires_at:
         return 0
     
+    if player.vip_expires_at < datetime.utcnow():
+        return 0
+    
     delta = player.vip_expires_at - datetime.utcnow()
     return max(0, delta.days + 1)
 
 
-async def activate_vip(session: AsyncSession, tg_id: int, days: int = 7) -> datetime:
+async def activate_vip(session: AsyncSession, tg_id: int, days: int = VIP_DAYS) -> datetime:
     """Активировать VIP на N дней. Возвращает дату окончания."""
     from .db import get_or_create_player
     
@@ -88,17 +92,21 @@ async def buy_vip_with_light(session: AsyncSession, tg_id: int) -> dict | None:
     if player.light < VIP_PRICE_LIGHT:
         return None
     
-    # Списываем Свет Лисы
-    player.light -= VIP_PRICE_LIGHT
+    # Списываем Свет Лисы через update
+    await session.execute(
+        update(FoxPlayer)
+        .where(FoxPlayer.tg_id == tg_id)
+        .values(light=FoxPlayer.light - VIP_PRICE_LIGHT)
+    )
     await session.commit()
     
     # Активируем VIP
-    expires = await activate_vip(session, tg_id, days=7)
+    expires = await activate_vip(session, tg_id, days=VIP_DAYS)
     
     return {
         "spent": VIP_PRICE_LIGHT,
         "currency": "light",
-        "days": 7,
+        "days": VIP_DAYS,
         "expires": expires,
     }
 
@@ -116,26 +124,11 @@ async def buy_vip_with_balance(session: AsyncSession, tg_id: int) -> dict | None
     await update_balance(session, tg_id, -VIP_PRICE_RUB)
     
     # Активируем VIP
-    expires = await activate_vip(session, tg_id, days=7)
+    expires = await activate_vip(session, tg_id, days=VIP_DAYS)
     
     return {
         "spent": VIP_PRICE_RUB,
         "currency": "rub",
-        "days": 7,
+        "days": VIP_DAYS,
         "expires": expires,
     }
-
-
-def get_vip_benefits_text() -> str:
-    """Текст с преимуществами VIP"""
-    return f"""💎 <b>VIP-статус</b>
-
-<b>Преимущества:</b>
-• +{VIP_EXTRA_SPINS} бесплатная попытка в день
-• +{VIP_LUCK_BOOST}% к шансам на редкие призы
-• 🌟 Эксклюзивный статус в профиле
-
-<b>Цена (7 дней):</b>
-• {VIP_PRICE_LIGHT} ✨ Свет Лисы
-• {VIP_PRICE_RUB} ₽ с баланса
-"""

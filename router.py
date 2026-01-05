@@ -95,6 +95,7 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     logger.info(f"[Gamification] Открытие Логова Лисы для {callback.from_user.id}")
     
     from .events import format_events_text
+    from .vip import is_vip, get_vip_days_left
     
     player = await get_or_create_player(session, callback.from_user.id)
     await check_and_reset_daily_spin(session, callback.from_user.id)
@@ -102,6 +103,11 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     
     free_spin_text = "✅ Есть" if player.free_spins > 0 else "❌ Нет"
     paid_spins_text = f" + 🛒 {player.paid_spins}" if player.paid_spins > 0 else ""
+    
+    # VIP статус
+    has_vip = await is_vip(session, callback.from_user.id)
+    vip_days = await get_vip_days_left(session, callback.from_user.id)
+    vip_text = f"💎 VIP: <b>{vip_days} дн.</b>\n" if has_vip else ""
     
     # Джекпот
     from .jackpot import get_jackpot_pool
@@ -112,7 +118,7 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     
     text = f"""🦊 <b>Добро пожаловать в Логово Лисы!</b>
 
-🪙 Лискоины: <b>{player.coins}</b>
+{vip_text}🪙 Лискоины: <b>{player.coins}</b>
 🎫 Ежедневная: <b>{free_spin_text}</b>{paid_spins_text}
 🎰 Джекпот: <b>{jackpot_pool}</b> 🪙
 
@@ -929,12 +935,12 @@ async def handle_convert_coins(callback: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data == "fox_upgrades")
 async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
-    """Магазин улучшений"""
+    """Магазин бустов"""
     await ensure_db()
     logger.info(f"[Gamification] fox_upgrades от {callback.from_user.id}")
     
     from .db import get_active_boosts
-    from .vip import is_vip, get_vip_days_left, VIP_PRICE_LIGHT, VIP_PRICE_RUB
+    from .vip import is_vip, get_vip_days_left, VIP_PRICE_LIGHT, VIP_PRICE_RUB, VIP_DAYS
     
     player = await get_or_create_player(session, callback.from_user.id)
     boosts = await get_active_boosts(session, callback.from_user.id)
@@ -955,26 +961,30 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
     if not active_boosts_text:
         active_boosts_text = "<i>Нет активных бустов</i>\n"
     
-    text = f"""⭐ <b>Улучшения</b>
+    # Формируем текст с доступностью
+    coins_status = f"🪙 Лискоины: <b>{player.coins}</b>"
+    light_status = f"✨ Свет Лисы: <b>{player.light}</b>"
+    
+    text = f"""🛒 <b>Магазин бустов</b>
 
-🪙 Лискоины: <b>{player.coins}</b>
-✨ Свет Лисы: <b>{player.light}</b>
+{coins_status}
+{light_status}
 
 <b>Активные бусты:</b>
 {active_boosts_text}
-<b>Магазин:</b>
+<b>Товары:</b>
 
-🍀 <b>Буст удачи +10%</b> — 50 🪙
-🍀 <b>Буст удачи +20%</b> — 100 🪙
-🎫 <b>Доп. попытка</b> — 30 🪙
+🍀 Буст удачи +10% — 50 🪙
+🍀 Буст удачи +20% — 100 🪙
+🎫 Доп. попытка — 30 🪙
 
-💎 <b>VIP (7 дней)</b> — {VIP_PRICE_LIGHT} ✨ или {VIP_PRICE_RUB} ₽
+💎 <b>VIP ({VIP_DAYS} дней)</b> — {VIP_PRICE_LIGHT} ✨ или {VIP_PRICE_RUB} ₽
 <i>+1 попытка/день, +10% удача</i>
 """
     
     builder = InlineKeyboardBuilder()
     
-    # Кнопки покупки
+    # Кнопки покупки (только если хватает)
     if player.coins >= 50:
         builder.row(InlineKeyboardButton(text="🍀 +10% (50 🪙)", callback_data="fox_buy_boost_10"))
     if player.coins >= 100:
@@ -984,9 +994,6 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
     
     # VIP
     builder.row(InlineKeyboardButton(text="💎 Купить VIP", callback_data="fox_buy_vip"))
-    
-    if player.coins < 30 and player.light < VIP_PRICE_LIGHT:
-        builder.row(InlineKeyboardButton(text="❌ Недостаточно ресурсов", callback_data="fox_no_coins_shop"))
     
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
@@ -1083,7 +1090,7 @@ async def handle_buy_vip(callback: CallbackQuery, session: AsyncSession):
     logger.info(f"[Gamification] fox_buy_vip от {callback.from_user.id}")
     await callback.answer()
     
-    from .vip import is_vip, get_vip_days_left, VIP_PRICE_LIGHT, VIP_PRICE_RUB, VIP_EXTRA_SPINS, VIP_LUCK_BOOST
+    from .vip import is_vip, get_vip_days_left, VIP_PRICE_LIGHT, VIP_PRICE_RUB, VIP_EXTRA_SPINS, VIP_LUCK_BOOST, VIP_DAYS
     from database.users import get_balance
     
     player = await get_or_create_player(session, callback.from_user.id)
@@ -1092,9 +1099,13 @@ async def handle_buy_vip(callback: CallbackQuery, session: AsyncSession):
     balance = await get_balance(session, callback.from_user.id)
     
     if has_vip:
-        status_text = f"💎 <b>VIP активен!</b> Осталось: {vip_days} дн."
+        status_text = f"💎 <b>VIP активен!</b> Осталось: {vip_days} дн.\n<i>Можешь продлить — дни добавятся!</i>"
     else:
         status_text = "❌ VIP не активен"
+    
+    # Проверяем доступность покупки
+    can_buy_light = player.light >= VIP_PRICE_LIGHT
+    can_buy_rub = balance >= VIP_PRICE_RUB
     
     text = f"""💎 <b>VIP-статус</b>
 
@@ -1105,9 +1116,9 @@ async def handle_buy_vip(callback: CallbackQuery, session: AsyncSession):
 • +{VIP_LUCK_BOOST}% к шансам на редкие призы
 • 🌟 Статус в профиле
 
-<b>Цена (7 дней):</b>
-• {VIP_PRICE_LIGHT} ✨ Свет Лисы
-• {VIP_PRICE_RUB} ₽ с баланса
+<b>Цена ({VIP_DAYS} дней):</b>
+• {VIP_PRICE_LIGHT} ✨ Свет Лисы {"✅" if can_buy_light else "❌"}
+• {VIP_PRICE_RUB} ₽ с баланса {"✅" if can_buy_rub else "❌"}
 
 <b>Твои ресурсы:</b>
 ✨ Свет Лисы: <b>{player.light}</b>
@@ -1116,20 +1127,17 @@ async def handle_buy_vip(callback: CallbackQuery, session: AsyncSession):
     
     builder = InlineKeyboardBuilder()
     
-    if player.light >= VIP_PRICE_LIGHT:
+    if can_buy_light:
         builder.row(InlineKeyboardButton(
             text=f"✨ Купить за {VIP_PRICE_LIGHT} Света",
             callback_data="fox_vip_buy_light"
         ))
     
-    if balance >= VIP_PRICE_RUB:
+    if can_buy_rub:
         builder.row(InlineKeyboardButton(
             text=f"💳 Купить за {VIP_PRICE_RUB} ₽",
             callback_data="fox_vip_buy_rub"
         ))
-    
-    if player.light < VIP_PRICE_LIGHT and balance < VIP_PRICE_RUB:
-        builder.row(InlineKeyboardButton(text="❌ Недостаточно ресурсов", callback_data="fox_no_coins_shop"))
     
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_upgrades"))
     
