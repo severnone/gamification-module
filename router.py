@@ -93,12 +93,17 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     await ensure_db()
     logger.info(f"[Gamification] Открытие Логова Лисы для {callback.from_user.id}")
     
+    from .events import format_events_text
+    
     player = await get_or_create_player(session, callback.from_user.id)
     await check_and_reset_daily_spin(session, callback.from_user.id)
     player = await get_or_create_player(session, callback.from_user.id)
     
     free_spin_text = "✅ Есть" if player.free_spins > 0 else "❌ Нет"
     paid_spins_text = f" + 🛒 {player.paid_spins}" if player.paid_spins > 0 else ""
+    
+    # Активные события
+    events_text = format_events_text()
     
     text = f"""🦊 <b>Добро пожаловать в Логово Лисы!</b>
 
@@ -107,7 +112,7 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
 
 🎮 Игр сыграно: <b>{player.total_games}</b>
 🏆 Выигрышей: <b>{player.total_wins}</b>
-
+{events_text}
 <i>Испытай удачу, выполняй задания и получай призы!</i>
 """
     

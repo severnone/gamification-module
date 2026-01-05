@@ -55,17 +55,23 @@ async def update_player_coins(session: AsyncSession, tg_id: int, amount: int) ->
 async def check_and_reset_daily_spin(session: AsyncSession, tg_id: int) -> bool:
     """
     Проверить и сбросить ежедневную попытку.
+    В выходные добавляет +1 бонусную попытку.
     Возвращает True, если попытка доступна.
     """
+    from .events import get_weekend_bonus_spins
+    
     player = await get_or_create_player(session, tg_id)
     today = datetime.utcnow().date()
     
     # Если последняя попытка была не сегодня — сбрасываем
     if player.last_free_spin_date is None or player.last_free_spin_date.date() < today:
+        # Базовая попытка + бонус за выходной
+        base_spins = 1 + get_weekend_bonus_spins()
+        
         await session.execute(
             update(FoxPlayer)
             .where(FoxPlayer.tg_id == tg_id)
-            .values(free_spins=1, last_free_spin_date=datetime.utcnow())
+            .values(free_spins=base_spins, last_free_spin_date=datetime.utcnow())
         )
         await session.commit()
         return True

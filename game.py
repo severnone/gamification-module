@@ -405,6 +405,10 @@ async def play_game(
             except (ValueError, IndexError):
                 pass
     
+    # Бонус счастливого часа
+    from .events import get_happy_hour_boost
+    boost_percent += get_happy_hour_boost()
+    
     # Выбираем тип игры
     if game_type is None:
         game_type = random.choice(["slots", "chest", "wheel"])
