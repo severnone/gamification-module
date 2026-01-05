@@ -147,7 +147,6 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession, admin: 
 ━━━━━━━━━━━━━━━━━━
 💰 Баланс: <b>{real_balance} ₽</b> <i>(для VPN)</i>
 🦊 Лискоины: <b>{player.coins}</b>
-✨ Свет Лисы: <b>{player.light}</b>
 ━━━━━━━━━━━━━━━━━━
 
 🏆 Джекпот казино: <b>{jackpot_pool} ₽</b>
@@ -187,7 +186,6 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
 {test_mode_text}
 🎫 Попыток: <b>{spins_text}</b>
 🦊 Лискоинов: <b>{player.coins}</b>
-✨ Свет Лисы: <b>{player.light}</b>
 
 ━━━━━━━━━━━━━━━━━━
 <b>🎮 Игры:</b>
@@ -277,8 +275,6 @@ async def handle_daily_bonus(callback: CallbackQuery, session: AsyncSession):
             reward_parts.append(f"{next_reward['coins']} 🦊")
         if next_reward.get("spins"):
             reward_parts.append(f"{next_reward['spins']} 🎫")
-        if next_reward.get("light"):
-            reward_parts.append(f"{next_reward['light']} ✨")
         next_reward_text = " + ".join(reward_parts) if reward_parts else "???"
     else:
         next_reward_text = "Завтра!"
@@ -344,14 +340,11 @@ async def handle_calendar_claim_from_bonus(callback: CallbackQuery, session: Asy
     # Выдаём награды
     coins_added = reward.get("coins", 0)
     spins_added = reward.get("spins", 0)
-    light_added = reward.get("light", 0)
     
     if coins_added > 0:
         await update_player_coins(session, callback.from_user.id, coins_added)
     if spins_added > 0:
         await add_paid_spin(session, callback.from_user.id, spins_added)
-    if light_added > 0:
-        player.light += light_added
     
     # Обновляем календарь
     player.calendar_day = new_day
@@ -364,8 +357,6 @@ async def handle_calendar_claim_from_bonus(callback: CallbackQuery, session: Asy
         reward_parts.append(f"+{coins_added} 🦊")
     if spins_added:
         reward_parts.append(f"+{spins_added} 🎫")
-    if light_added:
-        reward_parts.append(f"+{light_added} ✨")
     
     await callback.answer(f"🎁 День {new_day}: {', '.join(reward_parts)}", show_alert=True)
     
@@ -1094,7 +1085,6 @@ async def handle_balance(callback: CallbackQuery, session: AsyncSession):
 ━━━━━━━━━━━━━━━━━━
 
 🦊 Лискоины: <b>{player.coins}</b>
-✨ Свет Лисы: <b>{player.light}</b>
 
 <b>Что можно купить за Лискоины:</b>
 • Дополнительные попытки
@@ -1134,12 +1124,10 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
     
     # Формируем текст с доступностью
     coins_status = f"🦊 Лискоины: <b>{player.coins}</b>"
-    light_status = f"✨ Свет Лисы: <b>{player.light}</b>"
     
     text = f"""🛒 <b>Магазин бустов</b>
 
 {coins_status}
-{light_status}
 
 <b>Активные бусты:</b>
 {active_boosts_text}
@@ -1818,16 +1806,12 @@ async def handle_calendar_claim(callback: CallbackQuery, session: AsyncSession):
     # Выдаём награды
     coins_added = reward.get("coins", 0)
     spins_added = reward.get("spins", 0)
-    light_added = reward.get("light", 0)
     
     if coins_added > 0:
         await update_player_coins(session, callback.from_user.id, coins_added)
     
     if spins_added > 0:
         await add_paid_spin(session, callback.from_user.id, spins_added)
-    
-    if light_added > 0:
-        player.light += light_added
     
     # Обновляем календарь
     player.calendar_day = new_day
@@ -1840,8 +1824,6 @@ async def handle_calendar_claim(callback: CallbackQuery, session: AsyncSession):
         reward_parts.append(f"+{coins_added} 🦊")
     if spins_added:
         reward_parts.append(f"+{spins_added} 🎫")
-    if light_added:
-        reward_parts.append(f"+{light_added} ✨")
     
     reward_text = ", ".join(reward_parts)
     
