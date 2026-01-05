@@ -1193,14 +1193,17 @@ async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
     
     # Фаза 3: Кость катится
     dice_faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"]
-    for i in range(4):
-        dice = random.choice(dice_faces)
-        await msg.edit_text(
-            f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
-            f"💰 Ставка: <b>{bet} ₽</b>\n\n"
-            f"🎲 Кость катится...\n\n"
-            f"   [ {dice} ]"
-        )
+    random.shuffle(dice_faces)
+    for i, dice in enumerate(dice_faces[:4]):
+        try:
+            await msg.edit_text(
+                f"🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞\n\n"
+                f"💰 Ставка: <b>{bet} ₽</b>\n\n"
+                f"🎲 Кость катится{'.' * (i % 3 + 1)}\n\n"
+                f"   [ {dice} ]"
+            )
+        except Exception:
+            pass
         await asyncio.sleep(0.4)
     
     # Фаза 4: Замедление
