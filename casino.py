@@ -1207,7 +1207,6 @@ async def record_casino_game(
         profile.daily_won += winnings
         profile.current_win_streak += 1
         profile.current_lose_streak = 0
-        profile.cooldown_until = None  # Сбрасываем кулдаун при выигрыше
         
         if profile.current_win_streak > profile.best_win_streak:
             profile.best_win_streak = profile.current_win_streak
@@ -1217,11 +1216,10 @@ async def record_casino_game(
         profile.current_lose_streak += 1
         profile.current_win_streak = 0
         
-        # Кулдаун только 30 секунд при проигрыше (не час!)
-        profile.cooldown_until = now + timedelta(seconds=COOLDOWN_AFTER_LOSE)
-        
         if profile.current_lose_streak > profile.worst_lose_streak:
             profile.worst_lose_streak = profile.current_lose_streak
+    
+    # Кулдауны теперь управляются отдельно для каждой игры в router.py
     
     # Обновляем сессию если есть
     if casino_session:

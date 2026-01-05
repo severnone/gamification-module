@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -1393,6 +1395,68 @@ async def handle_casino_enter(callback: CallbackQuery, session: AsyncSession):
 # Временное хранилище выбранной игры
 _casino_selected_game: dict[int, str] = {}
 
+# Кулдауны по играм (отдельно для каждой игры!)
+# Формат: {tg_id: {game_type: datetime}}
+_game_cooldowns: dict[int, dict[str, datetime]] = {}
+
+GAME_COOLDOWN_SECONDS = 30  # Кулдаун после проигрыша
+
+
+def check_game_cooldown(tg_id: int, game_type: str) -> tuple[bool, int]:
+    """Проверить кулдаун для конкретной игры. Возвращает (can_play, seconds_left)"""
+    if tg_id not in _game_cooldowns:
+        return True, 0
+    
+    if game_type not in _game_cooldowns[tg_id]:
+        return True, 0
+    
+    cooldown_until = _game_cooldowns[tg_id][game_type]
+    now = datetime.utcnow()
+    
+    if cooldown_until > now:
+        seconds_left = int((cooldown_until - now).total_seconds())
+        return False, seconds_left
+    
+    return True, 0
+
+
+def set_game_cooldown(tg_id: int, game_type: str):
+    """Установить кулдаун для конкретной игры"""
+    if tg_id not in _game_cooldowns:
+        _game_cooldowns[tg_id] = {}
+    
+    _game_cooldowns[tg_id][game_type] = datetime.utcnow() + timedelta(seconds=GAME_COOLDOWN_SECONDS)
+
+
+def clear_game_cooldown(tg_id: int, game_type: str):
+    """Сбросить кулдаун для игры (при выигрыше)"""
+    if tg_id in _game_cooldowns and game_type in _game_cooldowns[tg_id]:
+        del _game_cooldowns[tg_id][game_type]
+
+
+async def record_game_with_cooldown(
+    session, 
+    tg_id: int, 
+    bet: int, 
+    won: bool, 
+    multiplier: float, 
+    payout: int,
+    game_type: str = None
+):
+    """Записать игру и установить/сбросить кулдаун для конкретной игры."""
+    from .casino import record_casino_game
+    
+    await record_casino_game(session, tg_id, bet, won, multiplier, payout)
+    
+    # Управляем кулдауном для конкретной игры
+    if game_type is None:
+        game_type = _casino_selected_game.get(tg_id, "dice")
+    
+    if won:
+        clear_game_cooldown(tg_id, game_type)
+    else:
+        set_game_cooldown(tg_id, game_type)
+
 
 @router.callback_query(F.data.startswith("fox_casino_game_"))
 async def handle_casino_game_select(callback: CallbackQuery, session: AsyncSession):
@@ -1405,13 +1469,13 @@ async def handle_casino_game_select(callback: CallbackQuery, session: AsyncSessi
     await callback.answer()
     
     from database.users import get_balance
-    from .casino import FIXED_BETS, get_or_create_casino_profile, get_current_jackpot
+    from .casino import FIXED_BETS, get_or_create_casino_profile, get_current_jackpot, COOLDOWN_PHRASES
+    import random
     
     _casino_selected_game[tg_id] = game_type
     
-    balance = int(await get_balance(session, tg_id))
-    profile = await get_or_create_casino_profile(session, tg_id)
-    jackpot = await get_current_jackpot(session)
+    # Проверяем кулдаун для этой конкретной игры
+    can_play, seconds_left = check_game_cooldown(tg_id, game_type)
     
     game_names = {
         "dice": "🎲 Кости",
@@ -1422,6 +1486,34 @@ async def handle_casino_game_select(callback: CallbackQuery, session: AsyncSessi
     }
     game_name = game_names.get(game_type, "Игра")
     
+    builder = InlineKeyboardBuilder()
+    
+    if not can_play:
+        # Кулдаун для этой игры — предлагаем другие
+        phrase = random.choice(COOLDOWN_PHRASES)
+        
+        text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+<b>{game_name}</b>
+
+{phrase}
+⏳ Подожди <b>{seconds_left}</b> сек...
+
+<i>Или попробуй другую игру!</i>
+"""
+        # Кнопки других игр (кроме текущей)
+        other_games = [(k, v) for k, v in game_names.items() if k != game_type]
+        for gtype, gname in other_games[:2]:
+            builder.row(InlineKeyboardButton(text=gname, callback_data=f"fox_casino_game_{gtype}"))
+        
+        builder.row(InlineKeyboardButton(text="⬅️ К играм", callback_data="fox_casino_enter"))
+        await edit_or_send_message(callback.message, text, builder.as_markup())
+        return
+    
+    balance = int(await get_balance(session, tg_id))
+    profile = await get_or_create_casino_profile(session, tg_id)
+    jackpot = await get_current_jackpot(session)
+    
     text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
 <b>{game_name}</b>
@@ -1431,8 +1523,6 @@ async def handle_casino_game_select(callback: CallbackQuery, session: AsyncSessi
 
 Выбери ставку:
 """
-    
-    builder = InlineKeyboardBuilder()
     
     row = []
     for bet in FIXED_BETS:
@@ -1676,7 +1766,7 @@ async def play_blackjack_game(callback: CallbackQuery, session: AsyncSession, be
         else:
             # Игрок выиграл с блэкджэком (×2.5)
             payout = int(bet * 2.5)
-            await record_casino_game(session, tg_id, bet, True, 2.5, payout)
+            await record_game_with_cooldown(session, tg_id, bet, True, 2.5, payout)
             
             text += f"\n🎉 <b>БЛЭКДЖЭК! Ты получаешь {payout} ₽!</b>"
             text += f"\n\n🦊 Лиса: {blackjack_format_hand(dealer_hand)} ({dealer_total})"
@@ -1768,7 +1858,7 @@ async def handle_blackjack_hit(callback: CallbackQuery, session: AsyncSession):
     
     if player_total > 21:
         # Перебор!
-        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        await record_game_with_cooldown(session, tg_id, bet, False, 0, 0)
         
         near_miss = ""
         if player_total == 22:
@@ -1854,12 +1944,12 @@ async def handle_blackjack_stand(callback: CallbackQuery, session: AsyncSession)
     if dealer_total > 21:
         # Лиса перебрала
         payout = bet * 2
-        await record_casino_game(session, tg_id, bet, True, 2.0, payout)
+        await record_game_with_cooldown(session, tg_id, bet, True, 2.0, payout)
         text += f"💥 <b>Лиса перебрала! Ты получаешь {payout} ₽!</b>"
         text += "\n\n<i>Лиса раздражённо бросает карты.</i>"
     elif dealer_total > player_total:
         # Лиса выиграла
-        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        await record_game_with_cooldown(session, tg_id, bet, False, 0, 0)
         diff = dealer_total - player_total
         near_miss = f"\n\n<i>Всего {diff} очков разницы...</i>" if diff <= 2 else ""
         text += f"❌ <b>Лиса выиграла. Ты потерял {bet} ₽</b>{near_miss}"
@@ -1867,12 +1957,12 @@ async def handle_blackjack_stand(callback: CallbackQuery, session: AsyncSession)
     elif dealer_total < player_total:
         # Игрок выиграл
         payout = bet * 2
-        await record_casino_game(session, tg_id, bet, True, 2.0, payout)
+        await record_game_with_cooldown(session, tg_id, bet, True, 2.0, payout)
         text += f"✅ <b>Ты выиграл {payout} ₽!</b>"
         text += "\n\n<i>Лиса молча пододвигает фишки.</i>"
     else:
         # Ничья — возвращаем ставку (bet списывается и bet возвращается = 0)
-        await record_casino_game(session, tg_id, bet, True, 1.0, bet)
+        await record_game_with_cooldown(session, tg_id, bet, True, 1.0, bet)
         text += "🤝 <b>Ничья! Ставка возвращена.</b>"
         text += "\n\n<i>Лиса молча смотрит.</i>"
     
@@ -2014,7 +2104,7 @@ async def handle_hilo_guess(callback: CallbackQuery, session: AsyncSession):
         
     else:
         # Проигрыш
-        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        await record_game_with_cooldown(session, tg_id, bet, False, 0, 0)
         
         near_miss = ""
         if (guess == "high" and number == 5) or (guess == "low" and number == 5):
@@ -2066,7 +2156,7 @@ async def handle_hilo_take(callback: CallbackQuery, session: AsyncSession):
     payout = game["current_win"]
     bet = game["bet"]
     
-    await record_casino_game(session, tg_id, bet, True, game["multiplier"], payout)
+    await record_game_with_cooldown(session, tg_id, bet, True, game["multiplier"], payout)
     
     text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
@@ -2192,7 +2282,7 @@ async def handle_cards_pick(callback: CallbackQuery, session: AsyncSession):
     if picked == ace_pos:
         # Выигрыш!
         payout = bet * 2
-        await record_casino_game(session, tg_id, bet, True, 2.0, payout)
+        await record_game_with_cooldown(session, tg_id, bet, True, 2.0, payout)
         
         text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
@@ -2208,7 +2298,7 @@ async def handle_cards_pick(callback: CallbackQuery, session: AsyncSession):
 """
     else:
         # Проигрыш
-        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        await record_game_with_cooldown(session, tg_id, bet, False, 0, 0)
         
         # Near miss - показываем что туз был рядом
         near_miss = ""
@@ -2355,7 +2445,7 @@ async def handle_redblack_pick(callback: CallbackQuery, session: AsyncSession):
     
     if result == "zero":
         # Зеро — всегда проигрыш
-        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        await record_game_with_cooldown(session, tg_id, bet, False, 0, 0)
         
         text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
@@ -2372,7 +2462,7 @@ async def handle_redblack_pick(callback: CallbackQuery, session: AsyncSession):
     elif (choice == "red" and result == "red") or (choice == "black" and result == "black"):
         # Выигрыш!
         payout = bet * 2
-        await record_casino_game(session, tg_id, bet, True, 2.0, payout)
+        await record_game_with_cooldown(session, tg_id, bet, True, 2.0, payout)
         
         text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
@@ -2388,7 +2478,7 @@ async def handle_redblack_pick(callback: CallbackQuery, session: AsyncSession):
 """
     else:
         # Проигрыш
-        await record_casino_game(session, tg_id, bet, False, 0, 0)
+        await record_game_with_cooldown(session, tg_id, bet, False, 0, 0)
         
         text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
