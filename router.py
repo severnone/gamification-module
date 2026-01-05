@@ -1,5 +1,3 @@
-import asyncio
-
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
@@ -10,7 +8,6 @@ from hooks.hooks import register_hook
 from logger import logger
 
 from .db import get_active_prizes, get_or_create_player
-from .init_db import init_gamification_db
 from .keyboards import build_fox_den_menu
 from .texts import (
     BTN_BACK,
@@ -21,9 +18,17 @@ from .texts import (
 
 router = Router(name="gamification")
 
+# Флаг инициализации БД
+_db_initialized = False
 
-# Инициализация БД при загрузке модуля
-asyncio.get_event_loop().run_until_complete(init_gamification_db())
+
+async def ensure_db():
+    """Ленивая инициализация таблиц БД"""
+    global _db_initialized
+    if not _db_initialized:
+        from .init_db import init_gamification_db
+        await init_gamification_db()
+        _db_initialized = True
 
 
 def build_back_to_den_kb() -> InlineKeyboardMarkup:
@@ -48,6 +53,7 @@ async def add_fox_den_button(**kwargs):
 @router.callback_query(F.data == "fox_den")
 async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     """Главное меню Логова Лисы"""
+    await ensure_db()
     logger.info(f"[Gamification] Открытие Логова Лисы для {callback.from_user.id}")
     
     # Получаем или создаём игрока
@@ -73,6 +79,7 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "fox_try_luck")
 async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
     """Испытать удачу"""
+    await ensure_db()
     logger.info(f"[Gamification] fox_try_luck от {callback.from_user.id}")
     
     player = await get_or_create_player(session, callback.from_user.id)
@@ -97,6 +104,7 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "fox_quests")
 async def handle_quests(callback: CallbackQuery, session: AsyncSession):
     """Задания"""
+    await ensure_db()
     logger.info(f"[Gamification] fox_quests от {callback.from_user.id}")
     
     player = await get_or_create_player(session, callback.from_user.id)
@@ -120,6 +128,7 @@ async def handle_quests(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "fox_my_prizes")
 async def handle_my_prizes(callback: CallbackQuery, session: AsyncSession):
     """Мои призы"""
+    await ensure_db()
     logger.info(f"[Gamification] fox_my_prizes от {callback.from_user.id}")
     
     prizes = await get_active_prizes(session, callback.from_user.id)
@@ -127,7 +136,6 @@ async def handle_my_prizes(callback: CallbackQuery, session: AsyncSession):
     if prizes:
         prizes_text = ""
         for prize in prizes:
-            expires_in = (prize.expires_at - prize.created_at).days
             prizes_text += f"• {prize.description or f'{prize.prize_type}: {prize.value}'}\n"
         
         text = f"""🎁 <b>Мои призы</b>
@@ -154,6 +162,7 @@ async def handle_my_prizes(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "fox_balance")
 async def handle_balance(callback: CallbackQuery, session: AsyncSession):
     """Баланс"""
+    await ensure_db()
     logger.info(f"[Gamification] fox_balance от {callback.from_user.id}")
     
     player = await get_or_create_player(session, callback.from_user.id)
@@ -183,6 +192,7 @@ async def handle_balance(callback: CallbackQuery, session: AsyncSession):
 @router.callback_query(F.data == "fox_upgrades")
 async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
     """Улучшения"""
+    await ensure_db()
     logger.info(f"[Gamification] fox_upgrades от {callback.from_user.id}")
     text = """⭐ <b>Улучшения</b>
 
