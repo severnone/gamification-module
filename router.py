@@ -1396,8 +1396,7 @@ async def handle_buy_vpn_days(callback: CallbackQuery, session: AsyncSession):
         tg_id=callback.from_user.id,
         prize_type="vpn_days",
         value=days,
-        description=f"+{days} дней VPN (куплено)",
-        rarity="purchased"
+        description=f"+{days} дней VPN (куплено)"
     )
     
     text = f"""✅ <b>Покупка успешна!</b>
