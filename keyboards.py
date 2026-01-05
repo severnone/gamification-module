@@ -3,22 +3,19 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 from .texts import (
     BTN_BACK,
-    BTN_BALANCE,
     BTN_MY_PRIZES,
-    BTN_QUESTS,
     BTN_TRY_LUCK,
     BTN_UPGRADES,
 )
 
 
 def build_fox_den_menu() -> InlineKeyboardMarkup:
-    """Главное меню Логова Лисы — упрощённое"""
+    """Главное меню Логова Лисы — минималистичное"""
     builder = InlineKeyboardBuilder()
     
-    # Основные кнопки
+    # Только 2 основные кнопки + назад
     builder.row(InlineKeyboardButton(text=BTN_TRY_LUCK, callback_data="fox_try_luck"))
     builder.row(InlineKeyboardButton(text="🦊 ЛИСЬЕ КАЗИНО 🔞", callback_data="fox_casino"))
-    builder.row(InlineKeyboardButton(text=BTN_BALANCE, callback_data="fox_balance"))
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="profile"))
     
     return builder.as_markup()
@@ -36,10 +33,7 @@ def build_try_luck_menu() -> InlineKeyboardMarkup:
     builder.row(InlineKeyboardButton(text="🦊 Сделка с лисой", callback_data="fox_deal"))
     
     # Активности
-    builder.row(
-        InlineKeyboardButton(text=BTN_QUESTS, callback_data="fox_quests"),
-        InlineKeyboardButton(text="📅 Календарь", callback_data="fox_calendar"),
-    )
+    builder.row(InlineKeyboardButton(text="📋 Ежедневные бонусы", callback_data="fox_daily_bonus"))
     builder.row(
         InlineKeyboardButton(text="📊 Лидерборд", callback_data="fox_leaderboard"),
         InlineKeyboardButton(text="🎁 Рефералы", callback_data="fox_referrals"),

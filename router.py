@@ -126,31 +126,33 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession, admin: 
     logger.info(f"[Gamification] Открытие Логова Лисы для {user_id}")
     
     from .events import format_events_text
+    from database.users import get_balance
+    from .casino import get_current_jackpot
     
     player = await get_or_create_player(session, callback.from_user.id)
     await check_and_reset_daily_spin(session, callback.from_user.id)
     player = await get_or_create_player(session, callback.from_user.id)
     
-    free_spin_text = "✅ Есть" if player.free_spins > 0 else "❌ Нет"
-    paid_spins_text = f" + 🛒 {player.paid_spins}" if player.paid_spins > 0 else ""
+    # Реальный баланс пользователя
+    real_balance = int(await get_balance(session, callback.from_user.id))
     
-    # Джекпот
-    from .jackpot import get_jackpot_pool
-    jackpot_pool = await get_jackpot_pool(session)
+    # Джекпот казино
+    jackpot_pool = await get_current_jackpot(session)
     
     # Активные события
     events_text = format_events_text()
     
     text = f"""🦊 <b>Добро пожаловать в Логово Лисы!</b>
 
+━━━━━━━━━━━━━━━━━━
+💰 Баланс: <b>{real_balance} ₽</b> <i>(для VPN)</i>
 🦊 Лискоины: <b>{player.coins}</b>
-🎫 Ежедневная: <b>{free_spin_text}</b>{paid_spins_text}
-🎰 Джекпот: <b>{jackpot_pool}</b> 🦊
+✨ Свет Лисы: <b>{player.light}</b>
+━━━━━━━━━━━━━━━━━━
 
-🎮 Игр сыграно: <b>{player.total_games}</b>
-🏆 Выигрышей: <b>{player.total_wins}</b>
+🏆 Джекпот казино: <b>{jackpot_pool} ₽</b>
 {events_text}
-<i>Испытай удачу, выполняй задания и получай призы!</i>
+<i>Испытай удачу или рискни в казино!</i>
 """
     
     await edit_or_send_message(
@@ -203,6 +205,208 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
         reply_markup=build_try_luck_menu(),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "fox_daily_bonus")
+async def handle_daily_bonus(callback: CallbackQuery, session: AsyncSession):
+    """Ежедневные бонусы — Задания + Календарь на одном экране"""
+    await ensure_db()
+    logger.info(f"[Gamification] fox_daily_bonus от {callback.from_user.id}")
+    
+    from .quests import (
+        init_daily_quests, get_player_quests, 
+        QUEST_DEFINITIONS, QuestType, update_quest_progress
+    )
+    from .calendar import get_calendar_status, CALENDAR_REWARDS
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    
+    # === КВЕСТЫ ===
+    await init_daily_quests(session, callback.from_user.id)
+    await update_quest_progress(session, callback.from_user.id, QuestType.DAILY_LOGIN)
+    quests = await get_player_quests(session, callback.from_user.id)
+    
+    quests_text = ""
+    claimable_quests = []
+    
+    for quest in quests:
+        quest_info = QUEST_DEFINITIONS.get(QuestType(quest.quest_type))
+        if not quest_info:
+            continue
+        
+        if quest.is_claimed:
+            status_icon = "✅"
+            reward = f"<s>{quest_info.reward_description}</s>"
+        elif quest.is_completed:
+            status_icon = "🎁"
+            reward = f"<b>{quest_info.reward_description}</b>"
+            claimable_quests.append(quest)
+        else:
+            status_icon = "⬜"
+            progress = f" ({quest.progress}/{quest.target})" if quest.target > 1 else ""
+            reward = quest_info.reward_description
+        
+        progress_str = f" ({quest.progress}/{quest.target})" if not quest.is_completed and quest.target > 1 else ""
+        quests_text += f"{status_icon} {quest_info.title}{progress_str} — {reward}\n"
+    
+    # === КАЛЕНДАРЬ ===
+    cal_status = get_calendar_status(player.calendar_day, player.last_calendar_claim)
+    current_day = player.calendar_day
+    can_claim_calendar = cal_status["can_claim"]
+    
+    # Визуализация календаря
+    calendar_line = ""
+    for day in range(1, 8):
+        if day < current_day or (day == current_day and not can_claim_calendar):
+            calendar_line += "✅"
+        elif day == current_day + 1 and can_claim_calendar:
+            calendar_line += "🎁"
+        elif day == 7:
+            calendar_line += "🎁"
+        else:
+            calendar_line += "⬜"
+        if day < 7:
+            calendar_line += " "
+    
+    # Награда за следующий день
+    next_day = (current_day + 1) if current_day < 7 else 1
+    if can_claim_calendar:
+        next_reward = CALENDAR_REWARDS.get(next_day if current_day < 7 else 1, {})
+        reward_parts = []
+        if next_reward.get("coins"):
+            reward_parts.append(f"{next_reward['coins']} 🦊")
+        if next_reward.get("spins"):
+            reward_parts.append(f"{next_reward['spins']} 🎫")
+        if next_reward.get("light"):
+            reward_parts.append(f"{next_reward['light']} ✨")
+        next_reward_text = " + ".join(reward_parts) if reward_parts else "???"
+    else:
+        next_reward_text = "Завтра!"
+    
+    text = f"""📋 <b>Ежедневные бонусы</b>
+
+━━━━ 🗓 КАЛЕНДАРЬ ━━━━
+{calendar_line}
+День <b>{current_day}/7</b> | {next_reward_text}
+
+━━━━ 📋 ЗАДАНИЯ ━━━━
+{quests_text}
+🔥 Серия входов: <b>{player.login_streak}</b> дней
+"""
+    
+    builder = InlineKeyboardBuilder()
+    
+    # Кнопка забрать календарь
+    if can_claim_calendar:
+        builder.row(InlineKeyboardButton(
+            text="🎁 Забрать награду календаря",
+            callback_data="fox_calendar_claim_from_bonus"
+        ))
+    
+    # Кнопка забрать квесты
+    if claimable_quests:
+        builder.row(InlineKeyboardButton(
+            text=f"🎁 Забрать награды ({len(claimable_quests)})",
+            callback_data="fox_claim_quests_from_bonus"
+        ))
+    
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "fox_calendar_claim_from_bonus")
+async def handle_calendar_claim_from_bonus(callback: CallbackQuery, session: AsyncSession):
+    """Забрать награду календаря из объединённого меню"""
+    await ensure_db()
+    logger.info(f"[Gamification] fox_calendar_claim_from_bonus от {callback.from_user.id}")
+    
+    from .calendar import get_calendar_status, CALENDAR_REWARDS
+    from .db import update_player_coins, add_paid_spin
+    from datetime import datetime
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    status = get_calendar_status(player.calendar_day, player.last_calendar_claim)
+    
+    if not status["can_claim"]:
+        await callback.answer("⏰ Ты уже забрал награду сегодня!", show_alert=True)
+        return
+    
+    # Определяем новый день
+    if status["streak_broken"] or player.calendar_day >= 7:
+        new_day = 1
+    else:
+        new_day = player.calendar_day + 1
+    
+    reward = CALENDAR_REWARDS[new_day]
+    
+    # Выдаём награды
+    coins_added = reward.get("coins", 0)
+    spins_added = reward.get("spins", 0)
+    light_added = reward.get("light", 0)
+    
+    if coins_added > 0:
+        await update_player_coins(session, callback.from_user.id, coins_added)
+    if spins_added > 0:
+        await add_paid_spin(session, callback.from_user.id, spins_added)
+    if light_added > 0:
+        player.light += light_added
+    
+    # Обновляем календарь
+    player.calendar_day = new_day
+    player.last_calendar_claim = datetime.utcnow()
+    await session.commit()
+    
+    # Формируем текст награды
+    reward_parts = []
+    if coins_added:
+        reward_parts.append(f"+{coins_added} 🦊")
+    if spins_added:
+        reward_parts.append(f"+{spins_added} 🎫")
+    if light_added:
+        reward_parts.append(f"+{light_added} ✨")
+    
+    await callback.answer(f"🎁 День {new_day}: {', '.join(reward_parts)}", show_alert=True)
+    
+    # Обновляем экран
+    await handle_daily_bonus(callback, session)
+
+
+@router.callback_query(F.data == "fox_claim_quests_from_bonus")
+async def handle_claim_quests_from_bonus(callback: CallbackQuery, session: AsyncSession):
+    """Забрать награды за квесты из объединённого меню"""
+    await ensure_db()
+    logger.info(f"[Gamification] fox_claim_quests_from_bonus от {callback.from_user.id}")
+    
+    from .quests import get_player_quests, QUEST_DEFINITIONS, QuestType
+    from .db import update_player_coins
+    
+    quests = await get_player_quests(session, callback.from_user.id)
+    
+    total_coins = 0
+    claimed_count = 0
+    
+    for quest in quests:
+        if quest.is_completed and not quest.is_claimed:
+            quest_info = QUEST_DEFINITIONS.get(QuestType(quest.quest_type))
+            if quest_info:
+                total_coins += quest_info.reward_coins
+                quest.is_claimed = True
+                claimed_count += 1
+    
+    if claimed_count == 0:
+        await callback.answer("Нет наград для получения!", show_alert=True)
+        return
+    
+    # Начисляем монеты
+    await update_player_coins(session, callback.from_user.id, total_coins)
+    await session.commit()
+    
+    await callback.answer(f"🎁 Получено: +{total_coins} 🦊", show_alert=True)
+    
+    # Обновляем экран
+    await handle_daily_bonus(callback, session)
 
 
 async def run_game(callback: CallbackQuery, session: AsyncSession, game_type: str):
@@ -873,91 +1077,34 @@ async def handle_apply_balance(callback: CallbackQuery, session: AsyncSession):
 
 @router.callback_query(F.data == "fox_balance")
 async def handle_balance(callback: CallbackQuery, session: AsyncSession):
-    """Баланс"""
+    """Баланс — информационная страница"""
     await ensure_db()
     logger.info(f"[Gamification] fox_balance от {callback.from_user.id}")
     
     from database.users import get_balance
     
     player = await get_or_create_player(session, callback.from_user.id)
-    real_balance = await get_balance(session, callback.from_user.id)
-    
-    # Курс: 50 Лискоинов = 25 рублей (2:1)
-    rub_equivalent = player.coins / 2
-    min_convert = 100  # Минимум для конвертации
+    real_balance = int(await get_balance(session, callback.from_user.id))
     
     text = f"""🦊 <b>Баланс</b>
 
-🦊 Лискоины: <b>{player.coins}</b>
-💰 Эквивалент: <b>~{rub_equivalent:.0f} ₽</b>
+━━━━━━━━━━━━━━━━━━
+💳 <b>Баланс бота: {real_balance} ₽</b>
+<i>Это реальные деньги для покупки VPN</i>
+━━━━━━━━━━━━━━━━━━
 
+🦊 Лискоины: <b>{player.coins}</b>
 ✨ Свет Лисы: <b>{player.light}</b>
 
-💳 Реальный баланс: <b>{real_balance:.0f} ₽</b>
+<b>Что можно купить за Лискоины:</b>
+• Дополнительные попытки
+• Бусты удачи
 
-<i>Курс обмена: 50 🦊 = 25 ₽</i>
-<i>Минимум для обмена: {min_convert} 🦊</i>
+<i>Лискоины — игровая валюта Логова Лисы</i>
 """
     
     builder = InlineKeyboardBuilder()
-    
-    if player.coins >= min_convert:
-        builder.row(InlineKeyboardButton(
-            text=f"💱 Обменять {player.coins} 🦊 → {rub_equivalent:.0f} ₽",
-            callback_data="fox_convert_coins"
-        ))
-    
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
-    
-    await edit_or_send_message(
-        target_message=callback.message,
-        text=text,
-        reply_markup=builder.as_markup(),
-    )
-    await callback.answer()
-
-
-@router.callback_query(F.data == "fox_convert_coins")
-async def handle_convert_coins(callback: CallbackQuery, session: AsyncSession):
-    """Конвертация Лискоинов в рубли"""
-    await ensure_db()
-    logger.info(f"[Gamification] Конвертация монет от {callback.from_user.id}")
-    await callback.answer()
-    
-    from database.users import update_balance, get_balance
-    from .db import update_player_coins
-    
-    player = await get_or_create_player(session, callback.from_user.id)
-    
-    min_convert = 100
-    if player.coins < min_convert:
-        await callback.answer(f"❌ Минимум для обмена: {min_convert} 🦊", show_alert=True)
-        return
-    
-    # Считаем сумму
-    coins_to_convert = player.coins
-    rub_amount = coins_to_convert / 2  # 50 монет = 25 рублей
-    
-    # Списываем монеты
-    await update_player_coins(session, callback.from_user.id, -coins_to_convert)
-    
-    # Добавляем на баланс
-    await update_balance(session, callback.from_user.id, rub_amount)
-    
-    new_balance = await get_balance(session, callback.from_user.id)
-    
-    text = f"""💱 <b>Обмен завершён!</b>
-
-✅ Обменяно: <b>{coins_to_convert}</b> 🦊
-💰 Получено: <b>+{rub_amount:.0f} ₽</b>
-
-💳 Баланс: <b>{new_balance:.0f} ₽</b>
-
-🦊 <i>Используй с умом!</i>
-"""
-    
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🦊 Баланс", callback_data="fox_balance"))
+    builder.row(InlineKeyboardButton(text="🛒 Магазин", callback_data="fox_upgrades"))
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())

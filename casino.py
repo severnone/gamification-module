@@ -59,10 +59,21 @@ NEAR_MISS_CHANCE = 35  # 35% проигрышей = near miss
 JACKPOT_CONTRIBUTION = 0.05  # 5% от каждой ставки идёт в джекпот
 JACKPOT_MIN_POOL = 100       # Минимальный джекпот для выигрыша
 
-# Кулдауны (в секундах)
-COOLDOWN_AFTER_GAME = [0, 30, 60, 120, 300]  # Прогрессивный: 0, 30с, 1мин, 2мин, 5мин
+# Кулдауны (только при проигрыше!)
+COOLDOWN_AFTER_LOSE = 30  # 30 секунд после проигрыша
 FORCED_BREAK_AFTER_LOSSES = 5  # Принудительный перерыв после N проигрышей подряд
 FORCED_BREAK_DURATION = 3600   # 1 час
+
+# Атмосферные фразы для кулдауна
+COOLDOWN_PHRASES = [
+    "🦊 Лиса протирает кости...",
+    "🦊 Лиса раскладывает карты...",
+    "🦊 Лиса считает выигрыш...",
+    "🦊 Лиса готовит стол...",
+    "🦊 Лиса перемешивает колоду...",
+    "🦊 Лиса зажигает свечи...",
+    "🦊 Лиса наводит порядок...",
+]
 
 # Самоблокировка
 SELF_BLOCK_DAYS = 7
@@ -170,8 +181,9 @@ BLOCKED_DAILY_GAMES = """🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
 BLOCKED_COOLDOWN = """🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
-⏳ Лиса думает.
-Подожди <b>{seconds}</b> сек.
+{phrase}
+
+⏳ Подожди <b>{seconds}</b> сек.
 """
 
 BLOCKED_FORCED_BREAK = """🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
@@ -533,10 +545,11 @@ async def can_enter_casino(session: AsyncSession, tg_id: int) -> tuple[bool, str
             "time": time_str
         }
     
-    # Кулдаун между играми
+    # Кулдаун между играми (только после проигрыша)
     if profile.cooldown_until and profile.cooldown_until > now:
         remaining = (profile.cooldown_until - now).total_seconds()
-        return False, "cooldown", {"seconds": int(remaining)}
+        phrase = random.choice(COOLDOWN_PHRASES)
+        return False, "cooldown", {"seconds": int(remaining), "phrase": phrase}
     
     # Баланс
     if balance < MIN_BET:
@@ -1089,11 +1102,12 @@ async def update_game_stats(
         if profile.current_lose_streak > profile.worst_lose_streak:
             profile.worst_lose_streak = profile.current_lose_streak
     
-    # Прогрессивный кулдаун
-    cooldown_index = min(profile.games_in_row, len(COOLDOWN_AFTER_GAME) - 1)
-    cooldown_seconds = COOLDOWN_AFTER_GAME[cooldown_index]
-    if cooldown_seconds > 0:
-        profile.cooldown_until = now + timedelta(seconds=cooldown_seconds)
+    # Кулдаун ТОЛЬКО при проигрыше! При выигрыше можно играть сразу.
+    if not won:
+        profile.cooldown_until = now + timedelta(seconds=COOLDOWN_AFTER_LOSE)
+    else:
+        profile.cooldown_until = None  # Сбрасываем кулдаун при выигрыше
+        profile.games_in_row = 0  # Сбрасываем счётчик игр подряд
     
     # Принудительный перерыв после серии проигрышей
     if profile.current_lose_streak >= FORCED_BREAK_AFTER_LOSSES:
