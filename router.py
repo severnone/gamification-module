@@ -151,29 +151,42 @@ async def handle_spin_free(callback: CallbackQuery, session: AsyncSession):
     """Бесплатная попытка"""
     await ensure_db()
     logger.info(f"[Gamification] fox_spin_free от {callback.from_user.id}")
+    await callback.answer()
     
-    result = await play_game(session, callback.from_user.id, use_coins=False)
+    # Отправляем начальное сообщение для анимации
+    msg = await callback.message.edit_text(
+        "🎰 <b>Крутим барабаны...</b>\n\n"
+        "┃ 🔄 ┃ 🔄 ┃ 🔄 ┃\n\n"
+        "<i>Удачи!</i>"
+    )
+    
+    result = await play_game(
+        session, 
+        callback.from_user.id, 
+        use_coins=False,
+        message=msg,
+    )
     
     if not result["success"]:
         if result["error"] == "no_spins":
-            await callback.answer("❌ Нет бесплатных попыток!", show_alert=True)
+            await msg.edit_text(
+                "❌ <b>Нет бесплатных попыток!</b>\n\n"
+                "Попробуйте завтра или сыграйте за Лискоины.",
+                reply_markup=build_try_luck_kb(False, 0)
+            )
             return
-        await callback.answer(f"❌ {result['error']}", show_alert=True)
+        await msg.edit_text(f"❌ {result['error']}", reply_markup=build_back_to_den_kb())
         return
     
     text = format_prize_message(
         result["game_type"],
         result["prize"],
+        result["symbols"],
         result["coins_spent"],
         result["new_balance"],
     )
     
-    await edit_or_send_message(
-        target_message=callback.message,
-        text=text,
-        reply_markup=build_after_game_kb(),
-    )
-    await callback.answer()
+    await msg.edit_text(text, reply_markup=build_after_game_kb())
 
 
 @router.callback_query(F.data == "fox_spin_coins")
@@ -181,26 +194,39 @@ async def handle_spin_coins(callback: CallbackQuery, session: AsyncSession):
     """Попытка за Лискоины"""
     await ensure_db()
     logger.info(f"[Gamification] fox_spin_coins от {callback.from_user.id}")
+    await callback.answer()
     
-    result = await play_game(session, callback.from_user.id, use_coins=True)
+    # Отправляем начальное сообщение для анимации
+    msg = await callback.message.edit_text(
+        "🎰 <b>Крутим барабаны...</b>\n\n"
+        "┃ 🔄 ┃ 🔄 ┃ 🔄 ┃\n\n"
+        "<i>Удачи!</i>"
+    )
+    
+    result = await play_game(
+        session, 
+        callback.from_user.id, 
+        use_coins=True,
+        message=msg,
+    )
     
     if not result["success"]:
-        await callback.answer(f"❌ {result['error']}", show_alert=True)
+        player = await get_or_create_player(session, callback.from_user.id)
+        await msg.edit_text(
+            f"❌ <b>Ошибка:</b> {result['error']}",
+            reply_markup=build_try_luck_kb(player.free_spins > 0, player.coins)
+        )
         return
     
     text = format_prize_message(
         result["game_type"],
         result["prize"],
+        result["symbols"],
         result["coins_spent"],
         result["new_balance"],
     )
     
-    await edit_or_send_message(
-        target_message=callback.message,
-        text=text,
-        reply_markup=build_after_game_kb(),
-    )
-    await callback.answer()
+    await msg.edit_text(text, reply_markup=build_after_game_kb())
 
 
 @router.callback_query(F.data == "fox_no_coins")
