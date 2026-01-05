@@ -1676,7 +1676,6 @@ async def play_blackjack_game(callback: CallbackQuery, session: AsyncSession, be
         else:
             # Игрок выиграл с блэкджэком (×2.5)
             payout = int(bet * 2.5)
-            await update_balance(session, tg_id, payout)
             await record_casino_game(session, tg_id, bet, True, 2.5, payout)
             
             text += f"\n🎉 <b>БЛЭКДЖЭК! Ты получаешь {payout} ₽!</b>"
@@ -1855,7 +1854,6 @@ async def handle_blackjack_stand(callback: CallbackQuery, session: AsyncSession)
     if dealer_total > 21:
         # Лиса перебрала
         payout = bet * 2
-        await update_balance(session, tg_id, payout)
         await record_casino_game(session, tg_id, bet, True, 2.0, payout)
         text += f"💥 <b>Лиса перебрала! Ты получаешь {payout} ₽!</b>"
         text += "\n\n<i>Лиса раздражённо бросает карты.</i>"
@@ -1869,13 +1867,12 @@ async def handle_blackjack_stand(callback: CallbackQuery, session: AsyncSession)
     elif dealer_total < player_total:
         # Игрок выиграл
         payout = bet * 2
-        await update_balance(session, tg_id, payout)
         await record_casino_game(session, tg_id, bet, True, 2.0, payout)
         text += f"✅ <b>Ты выиграл {payout} ₽!</b>"
         text += "\n\n<i>Лиса молча пододвигает фишки.</i>"
     else:
-        # Ничья
-        await update_balance(session, tg_id, bet)  # Возврат ставки
+        # Ничья — возвращаем ставку (bet списывается и bet возвращается = 0)
+        await record_casino_game(session, tg_id, bet, True, 1.0, bet)
         text += "🤝 <b>Ничья! Ставка возвращена.</b>"
         text += "\n\n<i>Лиса молча смотрит.</i>"
     
@@ -2069,7 +2066,6 @@ async def handle_hilo_take(callback: CallbackQuery, session: AsyncSession):
     payout = game["current_win"]
     bet = game["bet"]
     
-    await update_balance(session, tg_id, payout)
     await record_casino_game(session, tg_id, bet, True, game["multiplier"], payout)
     
     text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
@@ -2196,7 +2192,6 @@ async def handle_cards_pick(callback: CallbackQuery, session: AsyncSession):
     if picked == ace_pos:
         # Выигрыш!
         payout = bet * 2
-        await update_balance(session, tg_id, payout)
         await record_casino_game(session, tg_id, bet, True, 2.0, payout)
         
         text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
@@ -2377,7 +2372,6 @@ async def handle_redblack_pick(callback: CallbackQuery, session: AsyncSession):
     elif (choice == "red" and result == "red") or (choice == "black" and result == "black"):
         # Выигрыш!
         payout = bet * 2
-        await update_balance(session, tg_id, payout)
         await record_casino_game(session, tg_id, bet, True, 2.0, payout)
         
         text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞

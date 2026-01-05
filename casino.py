@@ -1188,14 +1188,51 @@ async def record_casino_game(
     if won and payout > 0:
         await update_balance(session, tg_id, payout)
     
-    # Обновляем статистику
-    await update_game_stats(session, profile, casino_session, bet, won, payout if won else 0)
-    
     # Джекпот — часть ставки идёт в пул
-    await update_jackpot_pool(session, bet)
+    jackpot_contribution = max(1, int(bet * JACKPOT_CONTRIBUTION))
+    await add_to_jackpot(session, jackpot_contribution)
     
-    # Получаем новый баланс
-    new_balance = await get_balance(session, tg_id)
+    # Обновляем статистику (БЕЗ forced_break для мини-игр, только для основной игры в кости)
+    # Для новых игр обновляем только базовую статистику
+    now = datetime.utcnow()
+    
+    profile.total_games += 1
+    profile.total_wagered += bet
+    profile.daily_games += 1
+    profile.last_game_at = now
+    
+    if won:
+        winnings = payout - bet
+        profile.total_won += winnings
+        profile.daily_won += winnings
+        profile.current_win_streak += 1
+        profile.current_lose_streak = 0
+        profile.cooldown_until = None  # Сбрасываем кулдаун при выигрыше
+        
+        if profile.current_win_streak > profile.best_win_streak:
+            profile.best_win_streak = profile.current_win_streak
+    else:
+        profile.total_lost += bet
+        profile.daily_lost += bet
+        profile.current_lose_streak += 1
+        profile.current_win_streak = 0
+        
+        # Кулдаун только 30 секунд при проигрыше (не час!)
+        profile.cooldown_until = now + timedelta(seconds=COOLDOWN_AFTER_LOSE)
+        
+        if profile.current_lose_streak > profile.worst_lose_streak:
+            profile.worst_lose_streak = profile.current_lose_streak
+    
+    # Обновляем сессию если есть
+    if casino_session:
+        casino_session.games_played += 1
+        casino_session.total_bet += bet
+        
+        if won:
+            casino_session.total_won += payout - bet
+            casino_session.net_result += payout - bet
+        else:
+            casino_session.net_result -= bet
     
     # Сохраняем игру
     game = FoxCasinoGame(
