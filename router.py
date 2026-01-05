@@ -64,7 +64,7 @@ def build_game_select_kb() -> InlineKeyboardMarkup:
     builder.row(
         InlineKeyboardButton(text="🦊 Сделка с лисой", callback_data="fox_deal"),
     )
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))  # Главное меню Логова
     return builder.as_markup()
 
 
@@ -82,7 +82,7 @@ def build_after_game_kb(game_type: str = "slots") -> InlineKeyboardMarkup:
     
     builder.row(InlineKeyboardButton(text="🎮 Выбрать игру", callback_data="fox_try_luck"))
     builder.row(InlineKeyboardButton(text="🎁 Мои призы", callback_data="fox_my_prizes"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))  # Назад в мини-игры
     return builder.as_markup()
 
 
@@ -462,7 +462,7 @@ async def run_game(callback: CallbackQuery, session: AsyncSession, game_type: st
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="⭐ Купить попытку", callback_data="fox_upgrades"))
             builder.row(InlineKeyboardButton(text="🧰 Задания", callback_data="fox_quests"))
-            builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+            builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
             await msg.edit_text(error_text, reply_markup=builder.as_markup())
         else:
             await msg.edit_text(
@@ -592,7 +592,7 @@ async def handle_deal_decline(callback: CallbackQuery, session: AsyncSession):
     
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🎮 К играм", callback_data="fox_try_luck"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
@@ -701,7 +701,7 @@ async def handle_deal_execute(callback: CallbackQuery, session: AsyncSession):
     
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🎮 К играм", callback_data="fox_try_luck"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await msg.edit_text(text, reply_markup=builder.as_markup())
 
@@ -783,7 +783,7 @@ async def handle_quests(callback: CallbackQuery, session: AsyncSession):
             callback_data="fox_claim_quests"
         ))
     
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(
         target_message=callback.message,
@@ -835,7 +835,7 @@ async def handle_claim_quests(callback: CallbackQuery, session: AsyncSession):
     
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🧰 К заданиям", callback_data="fox_quests"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
@@ -903,7 +903,7 @@ async def handle_my_prizes(callback: CallbackQuery, session: AsyncSession):
 <i>Испытай удачу, чтобы получить награды!</i>
 """
     
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(
         target_message=callback.message,
@@ -1031,7 +1031,7 @@ async def handle_apply_vpn_to_key(callback: CallbackQuery, session: AsyncSession
     
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🎁 Мои призы", callback_data="fox_my_prizes"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
@@ -1076,7 +1076,7 @@ async def handle_apply_balance(callback: CallbackQuery, session: AsyncSession):
     
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🎁 Мои призы", callback_data="fox_my_prizes"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
@@ -1110,7 +1110,7 @@ async def handle_balance(callback: CallbackQuery, session: AsyncSession):
     
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🛒 Магазин", callback_data="fox_upgrades"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
@@ -1192,7 +1192,7 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
     else:
         builder.row(InlineKeyboardButton(text="🔒 +14 дней VPN (1000 🦊)", callback_data="fox_no_coins_1000"))
     
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(
         target_message=callback.message,
@@ -1280,7 +1280,7 @@ async def handle_buy_spin(callback: CallbackQuery, session: AsyncSession):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🎰 Играть!", callback_data="fox_try_luck"))
     builder.row(InlineKeyboardButton(text="⭐ Улучшения", callback_data="fox_upgrades"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
@@ -1339,7 +1339,7 @@ async def handle_buy_vpn_days(callback: CallbackQuery, session: AsyncSession):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🎁 Мои призы", callback_data="fox_my_prizes"))
     builder.row(InlineKeyboardButton(text="🛒 Ещё купить", callback_data="fox_upgrades"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
@@ -3005,7 +3005,7 @@ async def handle_calendar_claim(callback: CallbackQuery, session: AsyncSession):
     
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="📅 Календарь", callback_data="fox_calendar"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
@@ -3032,7 +3032,7 @@ async def handle_leaderboard(callback: CallbackQuery, session: AsyncSession):
         InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
         InlineKeyboardButton(text="🦊 Монеты", callback_data="fox_lb_coins"),
     )
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
     await callback.answer()
@@ -3056,7 +3056,7 @@ async def handle_lb_week(callback: CallbackQuery, session: AsyncSession):
         InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
         InlineKeyboardButton(text="🦊 Монеты", callback_data="fox_lb_coins"),
     )
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
     await callback.answer()
@@ -3080,7 +3080,7 @@ async def handle_lb_month(callback: CallbackQuery, session: AsyncSession):
         InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
         InlineKeyboardButton(text="🦊 Монеты", callback_data="fox_lb_coins"),
     )
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
     await callback.answer()
@@ -3104,7 +3104,7 @@ async def handle_lb_streak(callback: CallbackQuery, session: AsyncSession):
         InlineKeyboardButton(text="✅ Серия", callback_data="fox_lb_streak"),
         InlineKeyboardButton(text="🦊 Монеты", callback_data="fox_lb_coins"),
     )
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
     await callback.answer()
@@ -3128,7 +3128,7 @@ async def handle_lb_coins(callback: CallbackQuery, session: AsyncSession):
         InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
         InlineKeyboardButton(text="✅ Монеты", callback_data="fox_lb_coins"),
     )
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
     await callback.answer()
@@ -3217,7 +3217,7 @@ async def handle_referrals(callback: CallbackQuery, session: AsyncSession):
         text="📤 Поделиться ссылкой",
         switch_inline_query=f"Заходи в Логово Лисы! 🦊 Испытай удачу и получи бонусы: {ref_link}"
     ))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
     await callback.answer()
