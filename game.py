@@ -291,11 +291,13 @@ async def play_game(
     use_coins: bool = False,
     message: Message = None,
     game_type: str = None,
+    test_mode: bool = False,
 ) -> dict:
     """
     Основная функция игры.
     
     game_type: "slots", "chest", "wheel" или None (случайный)
+    test_mode: если True - бесконечные попытки для тестирования
     """
     player = await get_or_create_player(session, tg_id)
     
@@ -307,8 +309,10 @@ async def play_game(
     
     coins_spent = 0
     
-    # Проверяем, есть ли попытка
-    if player.free_spins > 0:
+    # В тестовом режиме пропускаем проверку попыток
+    if test_mode:
+        pass  # Бесконечные попытки
+    elif player.free_spins > 0:
         success = await use_free_spin(session, tg_id)
         if not success:
             return {
