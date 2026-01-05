@@ -457,22 +457,55 @@ async def handle_my_prizes(callback: CallbackQuery, session: AsyncSession):
     await ensure_db()
     logger.info(f"[Gamification] fox_my_prizes от {callback.from_user.id}")
     
+    from datetime import datetime
+    
     prizes = await get_active_prizes(session, callback.from_user.id)
+    
+    builder = InlineKeyboardBuilder()
     
     if prizes:
         prizes_text = ""
+        vpn_prizes = []
+        balance_prizes = []
+        
         for prize in prizes:
-            days_left = (prize.expires_at - prize.created_at).days
-            expires_info = f"(истекает через {days_left}д)"
-            prizes_text += f"• {prize.description or f'{prize.prize_type}: {prize.value}'} {expires_info}\n"
+            # Считаем дни до истечения
+            days_left = (prize.expires_at - datetime.utcnow()).days
+            expires_info = f"(осталось {days_left}д)" if days_left > 0 else "(истекает сегодня!)"
+            
+            if prize.prize_type == "vpn_days":
+                prizes_text += f"📅 <b>+{prize.value} дней VPN</b> {expires_info}\n"
+                vpn_prizes.append(prize)
+            elif prize.prize_type == "balance":
+                rub_value = prize.value / 2  # 50 монет = 25 рублей
+                prizes_text += f"💰 <b>+{rub_value:.0f}₽ на баланс</b> {expires_info}\n"
+                balance_prizes.append(prize)
+            else:
+                prizes_text += f"🎁 {prize.description or prize.prize_type}: {prize.value} {expires_info}\n"
         
         text = f"""🎁 <b>Мои призы</b>
 
 {prizes_text}
-<i>Призы с днями VPN можно применить к подписке.</i>
-<i>Призы истекают через 14 дней!</i>
+<i>Выбери приз для применения:</i>
 """
-        # TODO: Добавить кнопки для применения призов
+        
+        # Кнопки для VPN призов
+        if vpn_prizes:
+            # Суммируем все дни VPN
+            total_vpn_days = sum(p.value for p in vpn_prizes)
+            builder.row(InlineKeyboardButton(
+                text=f"📅 Применить {total_vpn_days} дней VPN",
+                callback_data="fox_apply_vpn"
+            ))
+        
+        # Кнопки для баланса
+        if balance_prizes:
+            total_balance = sum(p.value / 2 for p in balance_prizes)
+            builder.row(InlineKeyboardButton(
+                text=f"💰 Получить {total_balance:.0f}₽ на баланс",
+                callback_data="fox_apply_balance"
+            ))
+        
     else:
         text = """🎁 <b>Мои призы</b>
 
@@ -481,12 +514,182 @@ async def handle_my_prizes(callback: CallbackQuery, session: AsyncSession):
 <i>Испытай удачу, чтобы получить награды!</i>
 """
     
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
     await edit_or_send_message(
         target_message=callback.message,
         text=text,
-        reply_markup=build_back_to_den_kb(),
+        reply_markup=builder.as_markup(),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "fox_apply_vpn")
+async def handle_apply_vpn(callback: CallbackQuery, session: AsyncSession):
+    """Применить призовые дни VPN к подписке"""
+    await ensure_db()
+    logger.info(f"[Gamification] Применение VPN призов от {callback.from_user.id}")
+    await callback.answer()
+    
+    from database.keys import get_keys
+    from datetime import datetime
+    
+    # Получаем ключи пользователя
+    keys = await get_keys(session, callback.from_user.id)
+    
+    if not keys:
+        text = """🎁 <b>Применить приз</b>
+
+❌ У тебя нет активных подписок VPN.
+
+<i>Сначала купи подписку, потом применяй призы.</i>
+"""
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_my_prizes"))
+        await edit_or_send_message(callback.message, text, builder.as_markup())
+        return
+    
+    # Получаем VPN призы
+    prizes = await get_active_prizes(session, callback.from_user.id)
+    vpn_prizes = [p for p in prizes if p.prize_type == "vpn_days"]
+    
+    if not vpn_prizes:
+        await callback.answer("❌ Нет призов для применения!", show_alert=True)
+        return
+    
+    total_days = sum(p.value for p in vpn_prizes)
+    
+    # Показываем выбор подписки
+    text = f"""🎁 <b>Применить {total_days} дней VPN</b>
+
+Выбери подписку, к которой применить приз:
+"""
+    
+    builder = InlineKeyboardBuilder()
+    now = datetime.utcnow().timestamp() * 1000
+    
+    for key in keys:
+        # Определяем статус
+        if key.expiry_time > now:
+            days_left = int((key.expiry_time - now) / 1000 / 60 / 60 / 24)
+            status = f"✅ {days_left}д"
+        else:
+            status = "❌ истекла"
+        
+        name = key.alias or key.email or key.client_id[:8]
+        builder.row(InlineKeyboardButton(
+            text=f"{name} ({status})",
+            callback_data=f"fox_apply_vpn_to_{key.client_id}"
+        ))
+    
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_my_prizes"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("fox_apply_vpn_to_"))
+async def handle_apply_vpn_to_key(callback: CallbackQuery, session: AsyncSession):
+    """Применить VPN дни к конкретной подписке"""
+    await ensure_db()
+    
+    client_id = callback.data.replace("fox_apply_vpn_to_", "")
+    logger.info(f"[Gamification] Применение VPN к {client_id} от {callback.from_user.id}")
+    await callback.answer()
+    
+    from database.keys import get_key_by_server, update_key_expiry
+    from .db import mark_prize_used
+    from datetime import datetime
+    
+    # Получаем ключ
+    key = await get_key_by_server(session, callback.from_user.id, client_id)
+    
+    if not key:
+        await callback.answer("❌ Подписка не найдена!", show_alert=True)
+        return
+    
+    # Получаем VPN призы
+    prizes = await get_active_prizes(session, callback.from_user.id)
+    vpn_prizes = [p for p in prizes if p.prize_type == "vpn_days"]
+    
+    if not vpn_prizes:
+        await callback.answer("❌ Нет призов для применения!", show_alert=True)
+        return
+    
+    total_days = sum(p.value for p in vpn_prizes)
+    total_ms = total_days * 24 * 60 * 60 * 1000
+    
+    # Вычисляем новый срок
+    now_ms = int(datetime.utcnow().timestamp() * 1000)
+    current_expiry = max(key.expiry_time, now_ms)  # Если истёк, считаем от сейчас
+    new_expiry = current_expiry + total_ms
+    
+    # Применяем
+    await update_key_expiry(session, client_id, new_expiry)
+    
+    # Помечаем призы как использованные
+    for prize in vpn_prizes:
+        await mark_prize_used(session, prize.id)
+    
+    new_days = int((new_expiry - now_ms) / 1000 / 60 / 60 / 24)
+    
+    text = f"""🎁 <b>Приз применён!</b>
+
+✅ Добавлено: <b>+{total_days} дней</b>
+📅 Подписка теперь активна: <b>{new_days} дней</b>
+
+🦊 <i>Лиса довольна твоим выбором!</i>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🎁 Мои призы", callback_data="fox_my_prizes"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+@router.callback_query(F.data == "fox_apply_balance")
+async def handle_apply_balance(callback: CallbackQuery, session: AsyncSession):
+    """Применить баланс на счёт"""
+    await ensure_db()
+    logger.info(f"[Gamification] Применение баланса от {callback.from_user.id}")
+    await callback.answer()
+    
+    from database.users import update_balance, get_balance
+    from .db import mark_prize_used
+    
+    # Получаем призы баланса
+    prizes = await get_active_prizes(session, callback.from_user.id)
+    balance_prizes = [p for p in prizes if p.prize_type == "balance"]
+    
+    if not balance_prizes:
+        await callback.answer("❌ Нет призов для применения!", show_alert=True)
+        return
+    
+    # Считаем сумму (50 лискоинов = 25 рублей, т.е. value/2)
+    total_rub = sum(p.value / 2 for p in balance_prizes)
+    
+    # Добавляем на баланс
+    await update_balance(session, callback.from_user.id, total_rub)
+    
+    # Помечаем призы как использованные
+    for prize in balance_prizes:
+        await mark_prize_used(session, prize.id)
+    
+    new_balance = await get_balance(session, callback.from_user.id)
+    
+    text = f"""🎁 <b>Приз применён!</b>
+
+✅ Добавлено на баланс: <b>+{total_rub:.0f}₽</b>
+💰 Твой баланс: <b>{new_balance:.0f}₽</b>
+
+🦊 <i>Используй с умом!</i>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🎁 Мои призы", callback_data="fox_my_prizes"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
 
 
 @router.callback_query(F.data == "fox_balance")

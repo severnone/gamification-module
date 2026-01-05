@@ -177,6 +177,21 @@ async def use_prize(session: AsyncSession, prize_id: int, tg_id: int) -> FoxPriz
     return prize
 
 
+async def mark_prize_used(session: AsyncSession, prize_id: int) -> bool:
+    """Пометить приз как использованный."""
+    result = await session.execute(
+        update(FoxPrize)
+        .where(FoxPrize.id == prize_id)
+        .values(is_used=True, used_at=datetime.utcnow())
+        .returning(FoxPrize.id)
+    )
+    success = result.scalar_one_or_none() is not None
+    await session.commit()
+    if success:
+        logger.info(f"[Gamification] Приз {prize_id} помечен как использованный")
+    return success
+
+
 # ==================== FoxGameHistory ====================
 
 async def add_game_history(
