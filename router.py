@@ -1,5 +1,6 @@
 from aiogram import F, Router
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.filters import Command
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -1455,3 +1456,47 @@ async def handle_lb_coins(callback: CallbackQuery, session: AsyncSession):
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
     await callback.answer()
+
+
+# ==================== АДМИНСКИЕ КОМАНДЫ ====================
+
+@router.message(Command("fox_notify"))
+async def cmd_fox_notify(message: Message, session: AsyncSession):
+    """Отправить уведомления неактивным игрокам (админ)"""
+    from config import ADMIN_TG_IDS
+    if message.from_user.id not in ADMIN_TG_IDS:
+        return
+    
+    await ensure_db()
+    logger.info(f"[Gamification] Запуск уведомлений админом {message.from_user.id}")
+    
+    await message.answer("📤 Отправляю уведомления...")
+    
+    from .notifications import send_inactive_notifications
+    
+    result = await send_inactive_notifications(message.bot, session)
+    
+    await message.answer(
+        f"✅ <b>Уведомления отправлены!</b>\n\n"
+        f"📬 3 дня неактивности: {result['3d']} чел.\n"
+        f"📬 7 дней неактивности: {result['7d']} чел."
+    )
+
+
+@router.message(Command("fox_daily_notify"))
+async def cmd_fox_daily_notify(message: Message, session: AsyncSession):
+    """Отправить ежедневные уведомления (админ)"""
+    from config import ADMIN_TG_IDS
+    if message.from_user.id not in ADMIN_TG_IDS:
+        return
+    
+    await ensure_db()
+    logger.info(f"[Gamification] Запуск daily уведомлений админом {message.from_user.id}")
+    
+    await message.answer("📤 Отправляю ежедневные уведомления...")
+    
+    from .notifications import send_daily_notifications
+    
+    sent = await send_daily_notifications(message.bot, session)
+    
+    await message.answer(f"✅ <b>Отправлено:</b> {sent} уведомлений")
