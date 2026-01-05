@@ -42,6 +42,10 @@ def build_back_to_den_kb() -> InlineKeyboardMarkup:
 # === РЕЖИМ ТЕСТИРОВАНИЯ (True = бесконечные попытки) ===
 TEST_MODE = False
 
+# === РЕЖИМ ДОРАБОТКИ (True = только админы могут войти) ===
+MAINTENANCE_MODE = True
+ADMIN_IDS = []  # Заполни свой Telegram ID, например: [123456789]
+
 
 def build_game_select_kb() -> InlineKeyboardMarkup:
     """Клавиатура выбора игры"""
@@ -89,10 +93,24 @@ async def add_fox_den_button(**kwargs):
 
 
 @router.callback_query(F.data == "fox_den")
-async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
+async def handle_fox_den(callback: CallbackQuery, session: AsyncSession, admin: bool = False):
     """Главное меню Логова Лисы"""
     await ensure_db()
-    logger.info(f"[Gamification] Открытие Логова Лисы для {callback.from_user.id}")
+    
+    # Проверка режима доработки
+    user_id = callback.from_user.id
+    is_allowed = admin or user_id in ADMIN_IDS
+    
+    if MAINTENANCE_MODE and not is_allowed:
+        await callback.answer(
+            "🦊 Логово Лисы на доработке!\n\n"
+            "Лиса готовит что-то особенное...\n"
+            "Скоро откроется!",
+            show_alert=True
+        )
+        return
+    
+    logger.info(f"[Gamification] Открытие Логова Лисы для {user_id}")
     
     from .events import format_events_text
     
