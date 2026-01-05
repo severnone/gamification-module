@@ -28,7 +28,7 @@ from .models import FoxCasinoGame, FoxCasinoSession, FoxCasinoProfile
 
 # ==================== НАСТРОЙКИ ====================
 
-# Ставки
+# Ставки (всегда целые рубли!)
 MIN_BET = 10
 MAX_BET = 500
 FIXED_BETS = [10, 25, 50, 100]
@@ -37,19 +37,27 @@ FIXED_BETS = [10, 25, 50, 100]
 DAILY_LOSS_LIMIT = 1000  # Макс проигрыш в день
 DAILY_GAMES_LIMIT = 50   # Макс игр в день
 
+# ==================== МАТЕМАТИКА (маржа ~40%) ====================
 # Базовые шансы (сумма = 100%)
-BASE_CHANCE_LOSE = 60
-BASE_CHANCE_WIN_X15 = 25   # ×1.5 (промежуточный)
-BASE_CHANCE_WIN_X2 = 12    # ×2
-BASE_CHANCE_WIN_X3 = 3     # ×3
+BASE_CHANCE_LOSE = 65.0      # ❌ Проигрыш
+BASE_CHANCE_WIN_X15 = 22.0   # ✅ ×1.5 (промежуточный, можно рискнуть)
+BASE_CHANCE_WIN_X2 = 9.0     # ✅ ×2
+BASE_CHANCE_WIN_X3 = 3.0     # 🔥 ×3
+BASE_CHANCE_WIN_X5 = 0.8     # 💎 ×5 (редкий)
+BASE_CHANCE_JACKPOT = 0.2    # 🏆 Джекпот (только при проигрыше!)
 
-# Шансы на второй фазе (если рискнул)
-PHASE2_CHANCE_LOSE = 55
-PHASE2_CHANCE_WIN_X2 = 35
-PHASE2_CHANCE_WIN_X3 = 10
+# Шансы на второй фазе (если рискнул после ×1.5)
+PHASE2_CHANCE_LOSE = 60
+PHASE2_CHANCE_WIN_X2 = 30
+PHASE2_CHANCE_WIN_X3 = 8
+PHASE2_CHANCE_WIN_X5 = 2
 
 # Near miss шанс (вероятность что проигрыш будет "почти выиграл")
-NEAR_MISS_CHANCE = 40  # 40% проигрышей = near miss
+NEAR_MISS_CHANCE = 35  # 35% проигрышей = near miss
+
+# Джекпот
+JACKPOT_CONTRIBUTION = 0.05  # 5% от каждой ставки идёт в джекпот
+JACKPOT_MIN_POOL = 100       # Минимальный джекпот для выигрыша
 
 # Кулдауны (в секундах)
 COOLDOWN_AFTER_GAME = [0, 30, 60, 120, 300]  # Прогрессивный: 0, 30с, 1мин, 2мин, 5мин
@@ -62,11 +70,11 @@ SELF_BLOCK_DAYS = 7
 # Ночной режим (UTC)
 NIGHT_MODE_START = 22  # 22:00
 NIGHT_MODE_END = 6     # 06:00
-NIGHT_MODE_X3_BONUS = 2  # +2% к шансу x3
+NIGHT_MODE_X3_BONUS = 1  # +1% к шансу x3
 
 # Золотой час
 GOLDEN_HOUR_DURATION = 60  # минут
-GOLDEN_HOUR_BONUS = 5      # +5% к выигрышам
+GOLDEN_HOUR_BONUS = 3      # +3% к шансу x2
 
 
 # ==================== ФРАЗЫ ЛИСЫ ====================
@@ -278,6 +286,33 @@ RESULT_WIN_X3 = """🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 💰 Баланс: <b>{balance:.0f} ₽</b>
 """
 
+RESULT_WIN_X5 = """🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+💎 <b>ОГРОМНЫЙ ВЫИГРЫШ ×5!</b>
+
+Ставка: {bet} ₽
+Получено: <b>+{winnings:.0f} ₽</b>
+
+💬 <i>«{comment}»</i>
+
+💰 Баланс: <b>{balance:.0f} ₽</b>
+"""
+
+RESULT_JACKPOT = """🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+🏆🏆🏆 <b>ДЖЕКПОТ!!!</b> 🏆🏆🏆
+
+Ты проиграл ставку... НО СОРВАЛ ДЖЕКПОТ!
+
+💰 Джекпот: <b>+{jackpot} ₽</b>
+
+💬 <i>«{comment}»</i>
+
+💰 Баланс: <b>{balance:.0f} ₽</b>
+
+<i>Лиса в шоке. Такое бывает раз в жизни.</i>
+"""
+
 # Результат рискованной игры (фаза 2)
 RESULT_RISK_LOSE = """🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
@@ -360,6 +395,21 @@ FOX_COMMENTS_WIN_X3 = [
     "Такого не было давно.",
 ]
 
+FOX_COMMENTS_WIN_X5 = [
+    "Невероятно.",
+    "Лиса в замешательстве.",
+    "Это... неожиданно.",
+    "Больше такого не повторится.",
+    "Уходи, пока можешь.",
+]
+
+FOX_COMMENTS_JACKPOT = [
+    "Лиса... потеряла дар речи.",
+    "Это было... невозможно.",
+    "Ты только что сделал невозможное.",
+    "Легенда.",
+]
+
 FOX_COMMENTS_RISK_LOSE = [
     "Жадность.",
     "Надо было забрать.",
@@ -403,15 +453,16 @@ STREAK_LOSE_5 = "❄️ 5 проигрышей — достаточно"
 @dataclass
 class CasinoResult:
     """Результат игры в казино"""
-    outcome: str  # "lose", "near_miss", "win_x15", "win_x2", "win_x3"
-    bet: float
+    outcome: str  # "lose", "near_miss", "win_x15", "win_x2", "win_x3", "win_x5", "jackpot"
+    bet: int  # Целые рубли!
     multiplier: float
-    winnings: float  # чистый выигрыш (может быть отрицательным)
-    new_balance: float
+    winnings: int  # чистый выигрыш (может быть отрицательным), целые рубли
+    new_balance: int  # Целые рубли
     comment: str
     near_miss_text: Optional[str] = None
     phase: int = 1
     was_risk: bool = False
+    jackpot_amount: int = 0  # Сумма джекпота если выиграл
 
 
 @dataclass 
@@ -658,20 +709,73 @@ async def end_session(session: AsyncSession, tg_id: int) -> Optional[str]:
 
 # ==================== ИГРОВАЯ ЛОГИКА ====================
 
-async def play_casino_phase1(session: AsyncSession, tg_id: int, bet: float) -> tuple[CasinoResult | Phase1Result, str]:
+async def add_to_jackpot(session: AsyncSession, amount: int):
+    """Добавить в джекпот."""
+    from .jackpot import get_or_create_jackpot
+    jackpot = await get_or_create_jackpot(session)
+    jackpot.pool += amount
+    await session.commit()
+
+
+async def win_jackpot(session: AsyncSession, tg_id: int) -> int:
+    """Выиграть джекпот. Возвращает сумму."""
+    from .jackpot import get_or_create_jackpot, FoxJackpotWin, JACKPOT_START_POOL
+    jackpot = await get_or_create_jackpot(session)
+    
+    amount = jackpot.pool
+    
+    # Сбрасываем джекпот
+    jackpot.pool = JACKPOT_START_POOL
+    jackpot.last_winner_id = tg_id
+    jackpot.last_win_amount = amount
+    jackpot.last_win_date = datetime.utcnow()
+    jackpot.total_won += amount
+    
+    # Записываем выигрыш
+    win_record = FoxJackpotWin(tg_id=tg_id, amount=amount)
+    session.add(win_record)
+    
+    await session.commit()
+    return amount
+
+
+async def get_current_jackpot(session: AsyncSession) -> int:
+    """Получить текущий размер джекпота."""
+    from .jackpot import get_or_create_jackpot
+    jackpot = await get_or_create_jackpot(session)
+    return jackpot.pool
+
+
+async def play_casino_phase1(session: AsyncSession, tg_id: int, bet: int) -> tuple[CasinoResult | Phase1Result, str]:
     """
     Первая фаза игры.
     Возвращает либо финальный результат, либо промежуточный (для риска).
+    
+    Математика (маржа ~40%):
+    - 65% проигрыш (с шансом 0.2% на джекпот!)
+    - 22% ×1.5 (промежуточный)
+    - 9% ×2
+    - 3% ×3
+    - 0.8% ×5
     """
+    bet = int(bet)  # Гарантируем целые рубли
+    
     profile = await get_or_create_casino_profile(session, tg_id)
     casino_session = await get_current_session(session, tg_id)
     
     # Списываем ставку
     await update_balance(session, tg_id, -bet)
-    balance = await get_balance(session, tg_id)
+    
+    # 5% от ставки идёт в джекпот
+    jackpot_contribution = max(1, int(bet * JACKPOT_CONTRIBUTION))
+    await add_to_jackpot(session, jackpot_contribution)
+    
+    balance = int(await get_balance(session, tg_id))
     
     # Модификаторы шансов
-    bonus_x3 = 0
+    bonus_x2 = 0.0
+    bonus_x3 = 0.0
+    
     if is_night_mode():
         bonus_x3 += NIGHT_MODE_X3_BONUS
     
@@ -679,24 +783,58 @@ async def play_casino_phase1(session: AsyncSession, tg_id: int, bet: float) -> t
     if profile.golden_hour_start:
         remaining = profile.golden_hour_start + timedelta(minutes=GOLDEN_HOUR_DURATION) - datetime.utcnow()
         if remaining.total_seconds() > 0:
-            bonus_x3 += GOLDEN_HOUR_BONUS
+            bonus_x2 += GOLDEN_HOUR_BONUS
     
-    # Бросаем кость
-    roll = random.randint(1, 100)
+    # Бросаем кость (используем float для точности)
+    roll = random.uniform(0, 100)
     
-    # Расчёт с бонусами
+    # Расчёт шансов с бонусами
     chance_lose = BASE_CHANCE_LOSE
     chance_win_x15 = BASE_CHANCE_WIN_X15
-    chance_win_x2 = BASE_CHANCE_WIN_X2
+    chance_win_x2 = BASE_CHANCE_WIN_X2 + bonus_x2
     chance_win_x3 = BASE_CHANCE_WIN_X3 + bonus_x3
+    chance_win_x5 = BASE_CHANCE_WIN_X5
     
-    # Корректируем сумму до 100
-    total = chance_lose + chance_win_x15 + chance_win_x2 + chance_win_x3
-    if total != 100:
-        chance_lose -= (total - 100)
+    # Корректируем проигрыш чтобы сумма была 100
+    total_wins = chance_win_x15 + chance_win_x2 + chance_win_x3 + chance_win_x5
+    chance_lose = 100.0 - total_wins
     
-    if roll <= chance_lose:
-        # ПРОИГРЫШ
+    # Пороги
+    threshold_lose = chance_lose
+    threshold_x15 = threshold_lose + chance_win_x15
+    threshold_x2 = threshold_x15 + chance_win_x2
+    threshold_x3 = threshold_x2 + chance_win_x3
+    # threshold_x5 = 100 (всё что осталось)
+    
+    if roll < threshold_lose:
+        # ПРОИГРЫШ — но проверяем джекпот!
+        jackpot_roll = random.uniform(0, 100)
+        current_jackpot = await get_current_jackpot(session)
+        
+        if jackpot_roll < BASE_CHANCE_JACKPOT and current_jackpot >= JACKPOT_MIN_POOL:
+            # 🏆 ДЖЕКПОТ!!!
+            jackpot_amount = await win_jackpot(session, tg_id)
+            await update_balance(session, tg_id, jackpot_amount)
+            balance = int(await get_balance(session, tg_id))
+            
+            # Обновляем статистику как выигрыш
+            await update_game_stats(session, profile, casino_session, bet, True, jackpot_amount)
+            
+            result = CasinoResult(
+                outcome="jackpot",
+                bet=bet,
+                multiplier=0,  # Джекпот не зависит от ставки
+                winnings=jackpot_amount - bet,
+                new_balance=balance,
+                comment=random.choice(FOX_COMMENTS_JACKPOT),
+                jackpot_amount=jackpot_amount,
+            )
+            
+            await save_game(session, tg_id, casino_session, result)
+            logger.info(f"[Casino] 🏆 JACKPOT! {tg_id} выиграл {jackpot_amount}₽!")
+            return result, "final"
+        
+        # Обычный проигрыш
         is_near_miss = random.randint(1, 100) <= NEAR_MISS_CHANCE
         
         if is_near_miss:
@@ -708,7 +846,6 @@ async def play_casino_phase1(session: AsyncSession, tg_id: int, bet: float) -> t
             comment = random.choice(FOX_COMMENTS_LOSE)
             near_miss_text = None
         
-        # Обновляем статистику
         await update_game_stats(session, profile, casino_session, bet, False, 0)
         
         result = CasinoResult(
@@ -721,14 +858,12 @@ async def play_casino_phase1(session: AsyncSession, tg_id: int, bet: float) -> t
             near_miss_text=near_miss_text,
         )
         
-        # Сохраняем игру
         await save_game(session, tg_id, casino_session, result)
-        
         return result, "final"
     
-    elif roll <= chance_lose + chance_win_x15:
+    elif roll < threshold_x15:
         # ПРОМЕЖУТОЧНЫЙ ВЫИГРЫШ ×1.5 — можно рискнуть
-        current_value = bet * 1.5
+        current_value = int(bet * 1.5)
         
         return Phase1Result(
             can_risk=True,
@@ -738,11 +873,11 @@ async def play_casino_phase1(session: AsyncSession, tg_id: int, bet: float) -> t
             balance=balance,
         ), "phase1"
     
-    elif roll <= chance_lose + chance_win_x15 + chance_win_x2:
+    elif roll < threshold_x2:
         # ВЫИГРЫШ ×2
         payout = bet * 2
         await update_balance(session, tg_id, payout)
-        balance = await get_balance(session, tg_id)
+        balance = int(await get_balance(session, tg_id))
         
         await update_game_stats(session, profile, casino_session, bet, True, payout)
         
@@ -758,11 +893,11 @@ async def play_casino_phase1(session: AsyncSession, tg_id: int, bet: float) -> t
         await save_game(session, tg_id, casino_session, result)
         return result, "final"
     
-    else:
+    elif roll < threshold_x3:
         # ВЫИГРЫШ ×3
         payout = bet * 3
         await update_balance(session, tg_id, payout)
-        balance = await get_balance(session, tg_id)
+        balance = int(await get_balance(session, tg_id))
         
         await update_game_stats(session, profile, casino_session, bet, True, payout)
         
@@ -777,16 +912,39 @@ async def play_casino_phase1(session: AsyncSession, tg_id: int, bet: float) -> t
         
         await save_game(session, tg_id, casino_session, result)
         return result, "final"
+    
+    else:
+        # 💎 ВЫИГРЫШ ×5 (редкий!)
+        payout = bet * 5
+        await update_balance(session, tg_id, payout)
+        balance = int(await get_balance(session, tg_id))
+        
+        await update_game_stats(session, profile, casino_session, bet, True, payout)
+        
+        result = CasinoResult(
+            outcome="win_x5",
+            bet=bet,
+            multiplier=5,
+            winnings=payout - bet,
+            new_balance=balance,
+            comment=random.choice(FOX_COMMENTS_WIN_X5),
+        )
+        
+        await save_game(session, tg_id, casino_session, result)
+        return result, "final"
 
 
-async def play_casino_phase2_take(session: AsyncSession, tg_id: int, bet: float, current_value: float) -> CasinoResult:
+async def play_casino_phase2_take(session: AsyncSession, tg_id: int, bet: int, current_value: int) -> CasinoResult:
     """Игрок решил забрать ×1.5."""
+    bet = int(bet)
+    current_value = int(current_value)
+    
     profile = await get_or_create_casino_profile(session, tg_id)
     casino_session = await get_current_session(session, tg_id)
     
     # Выплачиваем ×1.5
     await update_balance(session, tg_id, current_value)
-    balance = await get_balance(session, tg_id)
+    balance = int(await get_balance(session, tg_id))
     
     await update_game_stats(session, profile, casino_session, bet, True, current_value)
     
@@ -803,14 +961,16 @@ async def play_casino_phase2_take(session: AsyncSession, tg_id: int, bet: float,
     return result
 
 
-async def play_casino_phase2_risk(session: AsyncSession, tg_id: int, bet: float) -> CasinoResult:
+async def play_casino_phase2_risk(session: AsyncSession, tg_id: int, bet: int) -> CasinoResult:
     """Игрок решил рискнуть — вторая фаза."""
+    bet = int(bet)  # Гарантируем целые рубли
+    
     profile = await get_or_create_casino_profile(session, tg_id)
     casino_session = await get_current_session(session, tg_id)
     
-    # Шансы на второй фазе
+    # Шансы на второй фазе (60% проигрыш, 30% x2, 8% x3, 2% x5)
     roll = random.randint(1, 100)
-    balance = await get_balance(session, tg_id)
+    balance = int(await get_balance(session, tg_id))
     
     if roll <= PHASE2_CHANCE_LOSE:
         # ПРОИГРЫШ — теряет всё
@@ -831,7 +991,7 @@ async def play_casino_phase2_risk(session: AsyncSession, tg_id: int, bet: float)
         # ВЫИГРЫШ ×2
         payout = bet * 2
         await update_balance(session, tg_id, payout)
-        balance = await get_balance(session, tg_id)
+        balance = int(await get_balance(session, tg_id))
         
         await update_game_stats(session, profile, casino_session, bet, True, payout)
         
@@ -846,11 +1006,11 @@ async def play_casino_phase2_risk(session: AsyncSession, tg_id: int, bet: float)
             was_risk=True,
         )
     
-    else:
+    elif roll <= PHASE2_CHANCE_LOSE + PHASE2_CHANCE_WIN_X2 + PHASE2_CHANCE_WIN_X3:
         # ВЫИГРЫШ ×3
         payout = bet * 3
         await update_balance(session, tg_id, payout)
-        balance = await get_balance(session, tg_id)
+        balance = int(await get_balance(session, tg_id))
         
         await update_game_stats(session, profile, casino_session, bet, True, payout)
         
@@ -861,6 +1021,25 @@ async def play_casino_phase2_risk(session: AsyncSession, tg_id: int, bet: float)
             winnings=payout - bet,
             new_balance=balance,
             comment=random.choice(FOX_COMMENTS_RISK_WIN),
+            phase=2,
+            was_risk=True,
+        )
+    
+    else:
+        # 💎 ВЫИГРЫШ ×5 (редкий при риске!)
+        payout = bet * 5
+        await update_balance(session, tg_id, payout)
+        balance = int(await get_balance(session, tg_id))
+        
+        await update_game_stats(session, profile, casino_session, bet, True, payout)
+        
+        result = CasinoResult(
+            outcome="win_x5",
+            bet=bet,
+            multiplier=5,
+            winnings=payout - bet,
+            new_balance=balance,
+            comment=random.choice(FOX_COMMENTS_WIN_X5),
             phase=2,
             was_risk=True,
         )
@@ -1026,6 +1205,14 @@ def get_streak_text(profile: FoxCasinoProfile) -> str:
 
 def format_result_message(result: CasinoResult) -> str:
     """Форматировать сообщение с результатом."""
+    # Джекпот — особый случай!
+    if result.outcome == "jackpot":
+        return RESULT_JACKPOT.format(
+            jackpot=result.jackpot_amount,
+            comment=result.comment,
+            balance=result.new_balance,
+        )
+    
     if result.was_risk:
         # Результат рискованной игры
         if result.outcome == "lose":
@@ -1036,7 +1223,7 @@ def format_result_message(result: CasinoResult) -> str:
             )
         else:
             return RESULT_RISK_WIN.format(
-                bet=int(result.bet),
+                bet=result.bet,
                 multiplier=int(result.multiplier),
                 winnings=result.winnings,
                 comment=result.comment,
@@ -1045,21 +1232,21 @@ def format_result_message(result: CasinoResult) -> str:
     
     if result.outcome == "near_miss":
         return RESULT_NEAR_MISS.format(
-            bet=int(result.bet),
+            bet=result.bet,
             near_miss_text=result.near_miss_text,
             balance=result.new_balance,
         )
     
     if result.outcome == "lose":
         return RESULT_LOSE.format(
-            bet=int(result.bet),
+            bet=result.bet,
             comment=result.comment,
             balance=result.new_balance,
         )
     
     if result.outcome == "win_x15":
         return RESULT_WIN_X15.format(
-            bet=int(result.bet),
+            bet=result.bet,
             winnings=result.winnings,
             comment=result.comment,
             balance=result.new_balance,
@@ -1067,7 +1254,7 @@ def format_result_message(result: CasinoResult) -> str:
     
     if result.outcome == "win_x2":
         return RESULT_WIN_X2.format(
-            bet=int(result.bet),
+            bet=result.bet,
             winnings=result.winnings,
             comment=result.comment,
             balance=result.new_balance,
@@ -1075,7 +1262,15 @@ def format_result_message(result: CasinoResult) -> str:
     
     if result.outcome == "win_x3":
         return RESULT_WIN_X3.format(
-            bet=int(result.bet),
+            bet=result.bet,
+            winnings=result.winnings,
+            comment=result.comment,
+            balance=result.new_balance,
+        )
+    
+    if result.outcome == "win_x5":
+        return RESULT_WIN_X5.format(
+            bet=result.bet,
             winnings=result.winnings,
             comment=result.comment,
             balance=result.new_balance,

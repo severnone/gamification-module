@@ -1177,21 +1177,44 @@ async def handle_casino_enter(callback: CallbackQuery, session: AsyncSession):
     
     from database.users import get_balance
     from .casino import (
-        can_enter_casino, start_session, FIXED_BETS, get_or_create_casino_profile, get_streak_text
+        can_enter_casino, start_session, FIXED_BETS, get_or_create_casino_profile, 
+        get_streak_text, get_current_jackpot, MIN_BET,
+        BLOCKED_NO_BALANCE, BLOCKED_DAILY_LIMIT, BLOCKED_DAILY_GAMES,
+        BLOCKED_COOLDOWN, BLOCKED_FORCED_BREAK, BLOCKED_SELF
     )
     
     tg_id = callback.from_user.id
     can_enter, reason, data = await can_enter_casino(session, tg_id)
     
+    builder = InlineKeyboardBuilder()
+    
     if not can_enter:
-        await callback.answer(f"❌ {reason}", show_alert=True)
+        # Показываем причину блокировки
+        if reason == "self_blocked":
+            text = BLOCKED_SELF.format(**data)
+        elif reason == "forced_break":
+            text = BLOCKED_FORCED_BREAK.format(**data)
+        elif reason == "cooldown":
+            text = BLOCKED_COOLDOWN.format(**data)
+        elif reason == "no_balance":
+            text = BLOCKED_NO_BALANCE.format(min_bet=MIN_BET, **data)
+        elif reason == "daily_limit":
+            text = BLOCKED_DAILY_LIMIT.format(**data)
+        elif reason == "daily_games":
+            text = BLOCKED_DAILY_GAMES.format(**data)
+        else:
+            text = "❌ Вход заблокирован."
+        
+        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="fox_casino"))
+        await edit_or_send_message(callback.message, text, builder.as_markup())
         return
     
     # Начинаем сессию
     await start_session(session, tg_id)
     
-    balance = data["balance"]
+    balance = int(data["balance"])
     profile = await get_or_create_casino_profile(session, tg_id)
+    jackpot = await get_current_jackpot(session)
     
     # Информация о серии
     streak_text = get_streak_text(profile)
@@ -1199,12 +1222,12 @@ async def handle_casino_enter(callback: CallbackQuery, session: AsyncSession):
     
     text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
 
-💰 Баланс: <b>{balance:.0f} ₽</b>
+💰 Баланс: <b>{balance} ₽</b>
+🏆 Джекпот: <b>{jackpot} ₽</b>
 {streak_line}
 Выбери ставку:
 """
     
-    builder = InlineKeyboardBuilder()
     row = []
     for bet in FIXED_BETS:
         if balance >= bet:
