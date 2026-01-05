@@ -793,10 +793,14 @@ async def handle_balance(callback: CallbackQuery, session: AsyncSession):
     await ensure_db()
     logger.info(f"[Gamification] fox_balance от {callback.from_user.id}")
     
+    from database.users import get_balance
+    
     player = await get_or_create_player(session, callback.from_user.id)
+    real_balance = await get_balance(session, callback.from_user.id)
     
     # Курс: 50 Лискоинов = 25 рублей (2:1)
     rub_equivalent = player.coins / 2
+    min_convert = 100  # Минимум для конвертации
     
     text = f"""🪙 <b>Баланс</b>
 
@@ -805,40 +809,199 @@ async def handle_balance(callback: CallbackQuery, session: AsyncSession):
 
 ✨ Свет Лисы: <b>{player.light}</b>
 
-<i>Курс: 50 Лискоинов = 25 ₽</i>
+💳 Реальный баланс: <b>{real_balance:.0f} ₽</b>
 
-<i>Выполняй задания и играй, чтобы заработать!</i>
+<i>Курс обмена: 50 🪙 = 25 ₽</i>
+<i>Минимум для обмена: {min_convert} 🪙</i>
 """
+    
+    builder = InlineKeyboardBuilder()
+    
+    if player.coins >= min_convert:
+        builder.row(InlineKeyboardButton(
+            text=f"💱 Обменять {player.coins} 🪙 → {rub_equivalent:.0f} ₽",
+            callback_data="fox_convert_coins"
+        ))
+    
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
     await edit_or_send_message(
         target_message=callback.message,
         text=text,
-        reply_markup=build_back_to_den_kb(),
+        reply_markup=builder.as_markup(),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "fox_convert_coins")
+async def handle_convert_coins(callback: CallbackQuery, session: AsyncSession):
+    """Конвертация Лискоинов в рубли"""
+    await ensure_db()
+    logger.info(f"[Gamification] Конвертация монет от {callback.from_user.id}")
+    await callback.answer()
+    
+    from database.users import update_balance, get_balance
+    from .db import update_player_coins
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    
+    min_convert = 100
+    if player.coins < min_convert:
+        await callback.answer(f"❌ Минимум для обмена: {min_convert} 🪙", show_alert=True)
+        return
+    
+    # Считаем сумму
+    coins_to_convert = player.coins
+    rub_amount = coins_to_convert / 2  # 50 монет = 25 рублей
+    
+    # Списываем монеты
+    await update_player_coins(session, callback.from_user.id, -coins_to_convert)
+    
+    # Добавляем на баланс
+    await update_balance(session, callback.from_user.id, rub_amount)
+    
+    new_balance = await get_balance(session, callback.from_user.id)
+    
+    text = f"""💱 <b>Обмен завершён!</b>
+
+✅ Обменяно: <b>{coins_to_convert}</b> 🪙
+💰 Получено: <b>+{rub_amount:.0f} ₽</b>
+
+💳 Баланс: <b>{new_balance:.0f} ₽</b>
+
+🦊 <i>Используй с умом!</i>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🪙 Баланс", callback_data="fox_balance"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
 
 
 @router.callback_query(F.data == "fox_upgrades")
 async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
-    """Улучшения"""
+    """Магазин улучшений"""
     await ensure_db()
     logger.info(f"[Gamification] fox_upgrades от {callback.from_user.id}")
-    text = """⭐ <b>Улучшения</b>
+    
+    from .db import get_active_boosts
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    boosts = await get_active_boosts(session, callback.from_user.id)
+    
+    # Форматируем активные бусты
+    active_boosts_text = ""
+    if boosts:
+        for boost in boosts:
+            if boost.boost_type.startswith("luck_"):
+                percent = boost.boost_type.replace("luck_", "")
+                active_boosts_text += f"🍀 Буст удачи +{percent}% ({boost.uses_left} исп.)\n"
+    else:
+        active_boosts_text = "<i>Нет активных бустов</i>\n"
+    
+    text = f"""⭐ <b>Улучшения</b>
 
-🦊 Лиса готовит для тебя улучшения...
+🪙 Лискоины: <b>{player.coins}</b>
 
-<b>Скоро здесь появятся:</b>
-• 🍀 Бусты удачи (+10-30% к редким призам)
-• 🎫 Дополнительные попытки
-• ✨ Особые возможности
+<b>Активные бусты:</b>
+{active_boosts_text}
+<b>Магазин:</b>
 
-<i>Эта функция скоро будет доступна!</i>
+🍀 <b>Буст удачи +10%</b> — 50 🪙
+<i>Увеличивает шанс редких призов</i>
+
+🍀 <b>Буст удачи +20%</b> — 100 🪙
+<i>Увеличивает шанс редких призов</i>
+
+🎫 <b>Доп. попытка</b> — 30 🪙
+<i>+1 бесплатная игра</i>
 """
+    
+    builder = InlineKeyboardBuilder()
+    
+    # Кнопки покупки
+    if player.coins >= 50:
+        builder.row(InlineKeyboardButton(text="🍀 +10% (50 🪙)", callback_data="fox_buy_boost_10"))
+    if player.coins >= 100:
+        builder.row(InlineKeyboardButton(text="🍀 +20% (100 🪙)", callback_data="fox_buy_boost_20"))
+    if player.coins >= 30:
+        builder.row(InlineKeyboardButton(text="🎫 Попытка (30 🪙)", callback_data="fox_buy_spin"))
+    
+    if player.coins < 30:
+        builder.row(InlineKeyboardButton(text="❌ Недостаточно монет", callback_data="fox_no_coins_shop"))
+    
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
     await edit_or_send_message(
         target_message=callback.message,
         text=text,
-        reply_markup=build_back_to_den_kb(),
+        reply_markup=builder.as_markup(),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "fox_no_coins_shop")
+async def handle_no_coins_shop(callback: CallbackQuery):
+    """Недостаточно монет для магазина"""
+    await callback.answer("❌ Недостаточно Лискоинов! Играй и выполняй задания.", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("fox_buy_boost_"))
+async def handle_buy_boost(callback: CallbackQuery, session: AsyncSession):
+    """Покупка буста удачи"""
+    await ensure_db()
+    
+    boost_percent = int(callback.data.split("_")[-1])
+    cost = 50 if boost_percent == 10 else 100
+    
+    logger.info(f"[Gamification] Покупка буста +{boost_percent}% от {callback.from_user.id}")
+    
+    from .db import update_player_coins, add_boost
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    
+    if player.coins < cost:
+        await callback.answer("❌ Недостаточно Лискоинов!", show_alert=True)
+        return
+    
+    # Списываем монеты
+    await update_player_coins(session, callback.from_user.id, -cost)
+    
+    # Добавляем буст
+    await add_boost(session, callback.from_user.id, f"luck_{boost_percent}", uses=1)
+    
+    await callback.answer(f"✅ Буст +{boost_percent}% активирован!", show_alert=True)
+    
+    # Обновляем экран
+    await handle_upgrades(callback, session)
+
+
+@router.callback_query(F.data == "fox_buy_spin")
+async def handle_buy_spin(callback: CallbackQuery, session: AsyncSession):
+    """Покупка дополнительной попытки"""
+    await ensure_db()
+    
+    cost = 30
+    logger.info(f"[Gamification] Покупка попытки от {callback.from_user.id}")
+    
+    from .db import update_player_coins
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    
+    if player.coins < cost:
+        await callback.answer("❌ Недостаточно Лискоинов!", show_alert=True)
+        return
+    
+    # Списываем монеты и добавляем попытку
+    await update_player_coins(session, callback.from_user.id, -cost)
+    player.free_spins += 1
+    await session.commit()
+    
+    await callback.answer("✅ +1 бесплатная попытка!", show_alert=True)
+    
+    # Обновляем экран
+    await handle_upgrades(callback, session)
 
 
 # ==================== ЛИСЬЕ КАЗИНО (реальные ставки!) ====================
