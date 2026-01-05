@@ -44,7 +44,7 @@ TEST_MODE = False
 
 # === РЕЖИМ ДОРАБОТКИ (True = только админы могут войти) ===
 MAINTENANCE_MODE = True
-ADMIN_IDS = []  # Заполни свой Telegram ID, например: [123456789]
+ADMIN_IDS = [1609908245]  # Заполни свой Telegram ID, например: [123456789]
 
 
 def build_game_select_kb() -> InlineKeyboardMarkup:
@@ -102,12 +102,21 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession, admin: 
     is_allowed = admin or user_id in ADMIN_IDS
     
     if MAINTENANCE_MODE and not is_allowed:
-        await callback.answer(
-            "🦊 Логово Лисы на доработке!\n\n"
-            "Лиса готовит что-то особенное...\n"
-            "Скоро откроется!",
-            show_alert=True
+        text = """🦊 <b>Логово Лисы на доработке!</b>
+
+🔧 Лиса готовит что-то особенное...
+
+<i>Скоро откроется! Следи за обновлениями.</i>
+"""
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text="⬅️ Назад", callback_data="profile"))
+        
+        await edit_or_send_message(
+            target_message=callback.message,
+            text=text,
+            reply_markup=builder.as_markup(),
         )
+        await callback.answer()
         return
     
     logger.info(f"[Gamification] Открытие Логова Лисы для {user_id}")
