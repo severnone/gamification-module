@@ -39,7 +39,7 @@ def build_back_to_den_kb() -> InlineKeyboardMarkup:
 
 
 # === РЕЖИМ ТЕСТИРОВАНИЯ (True = бесконечные попытки) ===
-TEST_MODE = True
+TEST_MODE = False
 
 
 def build_game_select_kb() -> InlineKeyboardMarkup:
@@ -139,8 +139,6 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
 <b>🎰 Слоты</b> — крути барабаны!
 <b>🎡 Колесо</b> — испытай удачу!
 <b>🦊 Сделка</b> — рискни своими монетами!
-
-<i>3 одинаковых = ДЖЕКПОТ!</i>
 """
     
     await edit_or_send_message(
