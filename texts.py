@@ -12,7 +12,7 @@ FOX_DEN_WELCOME = """🦊 <b>Добро пожаловать в Логово Л�
 """
 
 # Кнопки главного меню
-BTN_TRY_LUCK = "🎰 Испытать удачу"
+BTN_TRY_LUCK = "🎮 Мини-игры"
 BTN_QUESTS = "🧰 Задания"
 BTN_MY_PRIZES = "🎁 Мои призы"
 BTN_BALANCE = "🦊 Баланс"

@@ -167,9 +167,11 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession, admin: 
 
 @router.callback_query(F.data == "fox_try_luck")
 async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
-    """Подменю 'Испытать удачу' — игры и активности"""
+    """Подменю 'Мини-игры' — игры и активности"""
     await ensure_db()
     logger.info(f"[Gamification] fox_try_luck от {callback.from_user.id}")
+    
+    from .db import get_next_free_spin_time
     
     await check_and_reset_daily_spin(session, callback.from_user.id)
     player = await get_or_create_player(session, callback.from_user.id)
@@ -182,9 +184,18 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
         spins_parts.append(f"🎫 {player.free_spins}")
     if player.paid_spins > 0:
         spins_parts.append(f"🛒 {player.paid_spins}")
-    spins_text = " + ".join(spins_parts) if spins_parts else "❌ Нет"
     
-    text = f"""🎰 <b>Испытать удачу</b>
+    # Если нет попыток — показываем таймер до следующей
+    if not spins_parts:
+        next_spin = await get_next_free_spin_time(session, callback.from_user.id)
+        if next_spin:
+            spins_text = f"⏳ через {next_spin}"
+        else:
+            spins_text = "❌ Нет"
+    else:
+        spins_text = " + ".join(spins_parts)
+    
+    text = f"""🎮 <b>Мини-игры</b>
 {test_mode_text}
 🎫 Попыток: <b>{spins_text}</b>
 🦊 Лискоинов: <b>{player.coins}</b>
@@ -197,6 +208,8 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
 
 <b>📋 Активности:</b>
 • Задания, календарь, рефералы
+
+<i>💡 Бесплатная попытка каждые 3 часа!</i>
 """
     
     await edit_or_send_message(
@@ -1138,6 +1151,7 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
 🔮 Буст удачи +10% — 50 🦊
 🔮 Буст удачи +20% — 100 🦊
 🎫 Доп. попытка — 30 🦊
+💰 +5₽ на баланс VPN — 500 🦊
 """
     
     builder = InlineKeyboardBuilder()
@@ -1157,6 +1171,12 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
         builder.row(InlineKeyboardButton(text="✅ Попытка (30 🦊)", callback_data="fox_buy_spin"))
     else:
         builder.row(InlineKeyboardButton(text="🔒 Попытка (30 🦊)", callback_data="fox_no_coins_30"))
+    
+    # Обмен на VPN баланс
+    if player.coins >= 500:
+        builder.row(InlineKeyboardButton(text="✅ +5₽ VPN (500 🦊)", callback_data="fox_buy_vpn_balance"))
+    else:
+        builder.row(InlineKeyboardButton(text="🔒 +5₽ VPN (500 🦊)", callback_data="fox_no_coins_500"))
     
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
@@ -1246,6 +1266,51 @@ async def handle_buy_spin(callback: CallbackQuery, session: AsyncSession):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🎰 Играть!", callback_data="fox_try_luck"))
     builder.row(InlineKeyboardButton(text="⭐ Улучшения", callback_data="fox_upgrades"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+@router.callback_query(F.data == "fox_buy_vpn_balance")
+async def handle_buy_vpn_balance(callback: CallbackQuery, session: AsyncSession):
+    """Обмен лискоинов на баланс VPN"""
+    await ensure_db()
+    
+    COST_COINS = 500  # Цена в лискоинах
+    VPN_BALANCE_ADD = 5  # Рублей добавляется
+    
+    logger.info(f"[Gamification] Обмен лискоинов на VPN баланс от {callback.from_user.id}")
+    await callback.answer()
+    
+    from .db import update_player_coins
+    from database.users import update_balance, get_balance
+    
+    player = await get_or_create_player(session, callback.from_user.id)
+    
+    if player.coins < COST_COINS:
+        await callback.answer("❌ Недостаточно Лискоинов!", show_alert=True)
+        return
+    
+    # Списываем лискоины
+    await update_player_coins(session, callback.from_user.id, -COST_COINS)
+    
+    # Добавляем на баланс VPN
+    await update_balance(session, callback.from_user.id, VPN_BALANCE_ADD)
+    new_balance = await get_balance(session, callback.from_user.id)
+    
+    text = f"""✅ <b>Обмен успешен!</b>
+
+🦊 Списано: <b>-{COST_COINS}</b> Лискоинов
+💰 Зачислено: <b>+{VPN_BALANCE_ADD} ₽</b> на баланс VPN
+
+💵 Баланс VPN: <b>{new_balance:.0f} ₽</b>
+🦊 Осталось: <b>{player.coins - COST_COINS}</b> Лискоинов
+
+<i>Используй баланс для продления VPN!</i>
+"""
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🛒 Ещё обменять", callback_data="fox_upgrades"))
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())

@@ -93,11 +93,12 @@ def get_prize_for_combination(symbols: list[str], boost_percent: int = 0) -> Pri
     
     else:
         # ВСЕ РАЗНЫЕ
-        # 70% - ничего, 30% - мелкий приз
-        if random.random() < 0.70:
+        # 35% - ничего, 65% - лискоины (легче зарабатывать)
+        if random.random() < 0.35:
             return Prize("empty", 0, "Ничего не выпало", "common", "❌")
         else:
-            return Prize("coins", random.choice([5, 10]), f"+{random.choice([5, 10])} Лискоинов", "common", "🦊")
+            coins = random.choice([5, 8, 10, 12, 15])
+            return Prize("coins", coins, f"+{coins} Лискоинов", "common", "🦊")
 
 
 def get_jackpot_prize(symbol: str, boost_percent: int = 0) -> Prize:
@@ -146,40 +147,40 @@ def get_jackpot_prize(symbol: str, boost_percent: int = 0) -> Prize:
 
 
 def get_double_prize(symbol: str, boost_percent: int = 0) -> Prize:
-    """Приз за 2 одинаковых символа"""
+    """Приз за 2 одинаковых символа — улучшенные награды"""
     
     multiplier = 1 + (boost_percent / 100)
     
     if symbol == "🦊":
-        days = int(7 * multiplier)
-        return Prize("vpn_days", days, f"+{days} дней VPN", "rare", "🦊")
+        # Две лисы - хороший бонус лискоинов
+        coins = int(35 * multiplier)
+        return Prize("coins", coins, f"+{coins} Лискоинов", "rare", "🦊")
     
     elif symbol == "💎":
-        days = int(5 * multiplier)
-        return Prize("vpn_days", days, f"+{days} дней VPN", "uncommon", "💎")
+        # Два алмаза
+        coins = int(40 * multiplier)
+        return Prize("coins", coins, f"+{coins} Лискоинов", "uncommon", "💎")
     
     elif symbol == "🔮":
         return Prize("boost", 10, "Буст удачи +10%", "uncommon", "🔮")
     
     elif symbol == "⭐":
-        days = int(3 * multiplier)
-        return Prize("vpn_days", days, f"+{days} дней VPN", "uncommon", "⭐")
+        coins = int(25 * multiplier)
+        return Prize("coins", coins, f"+{coins} Лискоинов", "uncommon", "⭐")
     
     elif symbol == "💰":
         coins = int(50 * multiplier)
         return Prize("coins", coins, f"+{coins} Лискоинов", "uncommon", "💰")
     
-    elif symbol == "🦊":
-        coins = int(25 * multiplier)
-        return Prize("coins", coins, f"+{coins} Лискоинов", "common", "🦊")
-    
     elif symbol == "🎁":
-        return Prize("vpn_days", 1, "+1 день VPN", "common", "🎁")
+        coins = int(20 * multiplier)
+        return Prize("coins", coins, f"+{coins} Лискоинов", "common", "🎁")
     
     elif symbol == "❌":
-        return Prize("empty", 0, "Почти повезло...", "common", "❌")
+        # Два крестика — утешительный приз
+        return Prize("coins", 5, "+5 Лискоинов", "common", "❌")
     
-    return Prize("coins", 15, "+15 Лискоинов", "common", "🦊")
+    return Prize("coins", 20, "+20 Лискоинов", "common", "🦊")
 
 
 def roll_symbol() -> str:

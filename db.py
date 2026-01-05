@@ -54,29 +54,73 @@ async def update_player_coins(session: AsyncSession, tg_id: int, amount: int) ->
 
 async def check_and_reset_daily_spin(session: AsyncSession, tg_id: int) -> bool:
     """
-    Проверить и сбросить ежедневную попытку.
-    В выходные добавляет +1 бонусную попытку.
+    Проверить и восстановить бесплатную попытку.
+    Попытка восстанавливается каждые 3 часа, НЕ суммируется (максимум 1).
     Возвращает True, если попытка доступна.
     """
-    from .events import get_weekend_bonus_spins
+    from datetime import timedelta
     
     player = await get_or_create_player(session, tg_id)
-    today = datetime.utcnow().date()
+    now = datetime.utcnow()
     
-    # Если последняя попытка была не сегодня — сбрасываем
-    if player.last_free_spin_date is None or player.last_free_spin_date.date() < today:
-        # Базовая попытка + бонусы
-        base_spins = 1 + get_weekend_bonus_spins()
-        
+    # Интервал восстановления — 3 часа
+    SPIN_COOLDOWN_HOURS = 3
+    
+    # Если уже есть бесплатная попытка — не добавляем (не суммируется!)
+    if player.free_spins >= 1:
+        return True
+    
+    # Проверяем прошло ли 3 часа с последнего восстановления
+    if player.last_free_spin_date is None:
+        # Первый раз — даём попытку
+        should_restore = True
+    else:
+        time_since_last = now - player.last_free_spin_date
+        should_restore = time_since_last >= timedelta(hours=SPIN_COOLDOWN_HOURS)
+    
+    if should_restore:
         await session.execute(
             update(FoxPlayer)
             .where(FoxPlayer.tg_id == tg_id)
-            .values(free_spins=base_spins, last_free_spin_date=datetime.utcnow())
+            .values(free_spins=1, last_free_spin_date=now)
         )
         await session.commit()
         return True
     
     return player.free_spins > 0
+
+
+async def get_next_free_spin_time(session: AsyncSession, tg_id: int) -> str | None:
+    """
+    Получить время до следующей бесплатной попытки.
+    Возвращает строку вида "2ч 15м" или None если попытка уже доступна.
+    """
+    from datetime import timedelta
+    
+    player = await get_or_create_player(session, tg_id)
+    
+    # Если попытка есть — не показываем таймер
+    if player.free_spins >= 1:
+        return None
+    
+    if player.last_free_spin_date is None:
+        return None
+    
+    SPIN_COOLDOWN_HOURS = 3
+    next_spin_time = player.last_free_spin_date + timedelta(hours=SPIN_COOLDOWN_HOURS)
+    now = datetime.utcnow()
+    
+    if next_spin_time <= now:
+        return None
+    
+    remaining = next_spin_time - now
+    hours = int(remaining.total_seconds() // 3600)
+    minutes = int((remaining.total_seconds() % 3600) // 60)
+    
+    if hours > 0:
+        return f"{hours}ч {minutes}м"
+    else:
+        return f"{minutes}м"
 
 
 async def use_spin(session: AsyncSession, tg_id: int) -> tuple[bool, str]:
