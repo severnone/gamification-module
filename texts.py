@@ -15,6 +15,6 @@ FOX_DEN_WELCOME = """🦊 <b>Добро пожаловать в Логово Л�
 BTN_TRY_LUCK = "🎰 Испытать удачу"
 BTN_QUESTS = "🧰 Задания"
 BTN_MY_PRIZES = "🎁 Мои призы"
-BTN_BALANCE = "🪙 Баланс"
+BTN_BALANCE = "🦊 Баланс"
 BTN_UPGRADES = "🛒 Магазин"
 BTN_BACK = "⬅️ Назад"

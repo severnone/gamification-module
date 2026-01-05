@@ -24,16 +24,16 @@ from .db import (
 
 # ==================== СИМВОЛЫ ДЛЯ СЛОТОВ ====================
 
-SLOT_SYMBOLS = ["🦊", "💎", "🪙", "🍀", "⭐", "💰", "🎁", "❌"]
+SLOT_SYMBOLS = ["🦊", "💎", "🦊", "🔮", "⭐", "💰", "🎁", "❌"]
 
 # Веса символов (чем меньше вес, тем реже выпадает)
 SYMBOL_WEIGHTS = {
     "🦊": 5,   # Лиса - редкий (джекпот если 3)
     "💎": 8,   # Алмаз - редкий
-    "🍀": 10,  # Клевер - необычный
+    "🔮": 10,  # Клевер - необычный
     "⭐": 12,  # Звезда - необычный
     "💰": 15,  # Деньги - обычный
-    "🪙": 18,  # Монета - обычный
+    "🦊": 18,  # Монета - обычный
     "🎁": 12,  # Подарок - необычный
     "❌": 20,  # Пусто - частый
 }
@@ -97,7 +97,7 @@ def get_prize_for_combination(symbols: list[str], boost_percent: int = 0) -> Pri
         if random.random() < 0.70:
             return Prize("empty", 0, "Ничего не выпало", "common", "❌")
         else:
-            return Prize("coins", random.choice([5, 10]), f"+{random.choice([5, 10])} Лискоинов", "common", "🪙")
+            return Prize("coins", random.choice([5, 10]), f"+{random.choice([5, 10])} Лискоинов", "common", "🦊")
 
 
 def get_jackpot_prize(symbol: str, boost_percent: int = 0) -> Prize:
@@ -115,9 +115,9 @@ def get_jackpot_prize(symbol: str, boost_percent: int = 0) -> Prize:
         days = int(30 * multiplier)
         return Prize("vpn_days", days, f"+{days} дней VPN!", "epic", "💎")
     
-    elif symbol == "🍀":
+    elif symbol == "🔮":
         # Три клевера - буст удачи
-        return Prize("boost", 30, "Буст удачи +30%!", "epic", "🍀")
+        return Prize("boost", 30, "Буст удачи +30%!", "epic", "🔮")
     
     elif symbol == "⭐":
         # Три звезды
@@ -128,10 +128,10 @@ def get_jackpot_prize(symbol: str, boost_percent: int = 0) -> Prize:
         # Три мешка денег - рубли на баланс
         return Prize("balance", 50, "+25₽ на баланс!", "legendary", "💰")
     
-    elif symbol == "🪙":
+    elif symbol == "🦊":
         # Три монеты
         coins = int(100 * multiplier)
-        return Prize("coins", coins, f"+{coins} Лискоинов!", "rare", "🪙")
+        return Prize("coins", coins, f"+{coins} Лискоинов!", "rare", "🦊")
     
     elif symbol == "🎁":
         # Три подарка
@@ -142,7 +142,7 @@ def get_jackpot_prize(symbol: str, boost_percent: int = 0) -> Prize:
         # Три креста - ничего, но даём утешительные монеты
         return Prize("coins", 15, "+15 Лискоинов (утешительный)", "common", "❌")
     
-    return Prize("coins", 50, "+50 Лискоинов", "uncommon", "🪙")
+    return Prize("coins", 50, "+50 Лискоинов", "uncommon", "🦊")
 
 
 def get_double_prize(symbol: str, boost_percent: int = 0) -> Prize:
@@ -158,8 +158,8 @@ def get_double_prize(symbol: str, boost_percent: int = 0) -> Prize:
         days = int(5 * multiplier)
         return Prize("vpn_days", days, f"+{days} дней VPN", "uncommon", "💎")
     
-    elif symbol == "🍀":
-        return Prize("boost", 10, "Буст удачи +10%", "uncommon", "🍀")
+    elif symbol == "🔮":
+        return Prize("boost", 10, "Буст удачи +10%", "uncommon", "🔮")
     
     elif symbol == "⭐":
         days = int(3 * multiplier)
@@ -169,9 +169,9 @@ def get_double_prize(symbol: str, boost_percent: int = 0) -> Prize:
         coins = int(50 * multiplier)
         return Prize("coins", coins, f"+{coins} Лискоинов", "uncommon", "💰")
     
-    elif symbol == "🪙":
+    elif symbol == "🦊":
         coins = int(25 * multiplier)
-        return Prize("coins", coins, f"+{coins} Лискоинов", "common", "🪙")
+        return Prize("coins", coins, f"+{coins} Лискоинов", "common", "🦊")
     
     elif symbol == "🎁":
         return Prize("vpn_days", 1, "+1 день VPN", "common", "🎁")
@@ -179,7 +179,7 @@ def get_double_prize(symbol: str, boost_percent: int = 0) -> Prize:
     elif symbol == "❌":
         return Prize("empty", 0, "Почти повезло...", "common", "❌")
     
-    return Prize("coins", 15, "+15 Лискоинов", "common", "🪙")
+    return Prize("coins", 15, "+15 Лискоинов", "common", "🦊")
 
 
 def roll_symbol() -> str:
@@ -281,7 +281,7 @@ async def animate_wheel(message: Message, final_sector: int) -> None:
     """Анимация колеса удачи — простая"""
     
     # Секторы колеса
-    sectors = ["🦊", "💎", "🪙", "🍀", "⭐", "💰", "🎁", "❌"]
+    sectors = ["🦊", "💎", "🦊", "🔮", "⭐", "💰", "🎁", "❌"]
     
     # Фаза 1: Начало
     await message.edit_text(
@@ -509,7 +509,7 @@ async def play_game(
             await update_player_coins(session, tg_id, jackpot_win)
             player = await get_or_create_player(session, tg_id)
             new_balance = player.coins
-            logger.info(f"[Gamification] 🎰 ДЖЕКПОТ! {tg_id} выиграл {jackpot_win} 🪙")
+            logger.info(f"[Gamification] 🎰 ДЖЕКПОТ! {tg_id} выиграл {jackpot_win} 🦊")
     except Exception as e:
         logger.warning(f"[Gamification] Ошибка джекпота: {e}")
     
@@ -585,6 +585,6 @@ def format_prize_message(game_type: str, prize: Prize, symbols: list[str], coins
     if coins_spent > 0:
         message += f"💸 Потрачено: {coins_spent} Лискоинов\n"
     
-    message += f"🪙 Баланс: <b>{new_balance}</b> Лискоинов"
+    message += f"🦊 Баланс: <b>{new_balance}</b> Лискоинов"
     
     return message

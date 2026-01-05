@@ -123,4 +123,4 @@ async def get_jackpot_info(session: AsyncSession) -> dict:
 
 def format_jackpot_display(pool: int) -> str:
     """Форматированное отображение джекпота для меню"""
-    return f"🎰 Джекпот: <b>{pool}</b> 🪙"
+    return f"🎰 Джекпот: <b>{pool}</b> 🦊"

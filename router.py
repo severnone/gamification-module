@@ -112,9 +112,9 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     
     text = f"""🦊 <b>Добро пожаловать в Логово Лисы!</b>
 
-🪙 Лискоины: <b>{player.coins}</b>
+🦊 Лискоины: <b>{player.coins}</b>
 🎫 Ежедневная: <b>{free_spin_text}</b>{paid_spins_text}
-🎰 Джекпот: <b>{jackpot_pool}</b> 🪙
+🎰 Джекпот: <b>{jackpot_pool}</b> 🦊
 
 🎮 Игр сыграно: <b>{player.total_games}</b>
 🏆 Выигрышей: <b>{player.total_wins}</b>
@@ -154,7 +154,7 @@ async def handle_try_luck(callback: CallbackQuery, session: AsyncSession):
 🦊 Выбери игру!
 {test_mode_text}
 🎫 Попыток: <b>{spins_text}</b>
-🪙 Лискоинов: <b>{player.coins}</b>
+🦊 Лискоинов: <b>{player.coins}</b>
 
 <b>🎰 Слоты</b> — крути барабаны!
 <b>🎡 Колесо</b> — испытай удачу!
@@ -211,7 +211,7 @@ async def run_game(callback: CallbackQuery, session: AsyncSession, game_type: st
 <b>Как получить:</b>
 • ⏰ Бесплатная попытка каждый день
 • 🧰 Выполняй задания
-• ⭐ Купи в улучшениях (30 🪙)
+• ⭐ Купи в улучшениях (30 🦊)
 """
             builder = InlineKeyboardBuilder()
             builder.row(InlineKeyboardButton(text="⭐ Купить попытку", callback_data="fox_upgrades"))
@@ -241,7 +241,7 @@ async def run_game(callback: CallbackQuery, session: AsyncSession, game_type: st
 
 🦊 Лиса в шоке! Ты сорвал банк!
 
-💰 <b>+{result['jackpot_win']}</b> 🪙
+💰 <b>+{result['jackpot_win']}</b> 🦊
 
 🎉🎉🎉"""
         text = jackpot_text + "\n\n" + text
@@ -308,8 +308,8 @@ async def handle_deal_menu(callback: CallbackQuery, session: AsyncSession):
 💰 Твои Лискоины: <b>{player.coins}</b>
 
 <b>Выбери ставку:</b>
-Минимум: {MIN_COINS_STAKE} 🪙
-Максимум: {MAX_COINS_STAKE} 🪙
+Минимум: {MIN_COINS_STAKE} 🦊
+Максимум: {MAX_COINS_STAKE} 🦊
 
 <i>⚠️ Выиграешь — удвоишь (или утроишь)
 Проиграешь — потеряешь всё</i>
@@ -321,7 +321,7 @@ async def handle_deal_menu(callback: CallbackQuery, session: AsyncSession):
     row = []
     for stake in stakes:
         if player.coins >= stake:
-            row.append(InlineKeyboardButton(text=f"{stake} 🪙", callback_data=f"fox_deal_stake_{stake}"))
+            row.append(InlineKeyboardButton(text=f"{stake} 🦊", callback_data=f"fox_deal_stake_{stake}"))
     if row:
         builder.row(*row[:2])
         if len(row) > 2:
@@ -370,7 +370,7 @@ async def handle_deal_confirm(callback: CallbackQuery, session: AsyncSession):
     # Показываем экран подтверждения
     text = f"""🦊 <b>СДЕЛКА С ЛИСОЙ</b>
 
-Ты ставишь: <b>{stake}</b> 🪙
+Ты ставишь: <b>{stake}</b> 🦊
 
 <b>Заключить сделку?</b>
 
@@ -405,7 +405,7 @@ async def handle_deal_execute(callback: CallbackQuery, session: AsyncSession):
     # Анимация: Лиса думает
     msg = await callback.message.answer(
         "🦊 <b>СДЕЛКА С ЛИСОЙ</b>\n\n"
-        f"Ставка: <b>{stake}</b> 🪙\n\n"
+        f"Ставка: <b>{stake}</b> 🦊\n\n"
         "🤔 <i>Лиса думает...</i>"
     )
     
@@ -413,7 +413,7 @@ async def handle_deal_execute(callback: CallbackQuery, session: AsyncSession):
     
     await msg.edit_text(
         "🦊 <b>СДЕЛКА С ЛИСОЙ</b>\n\n"
-        f"Ставка: <b>{stake}</b> 🪙\n\n"
+        f"Ставка: <b>{stake}</b> 🦊\n\n"
         "🦊 <i>Лиса смотрит тебе в глаза...</i>"
     )
     
@@ -432,25 +432,25 @@ async def handle_deal_execute(callback: CallbackQuery, session: AsyncSession):
 
 ✅ <b>ВЫИГРЫШ!</b>
 
-Ставка: {stake} 🪙
+Ставка: {stake} 🦊
 Множитель: <b>×{result.multiplier:.0f}</b>
-Выигрыш: <b>+{result.result_value - stake}</b> 🪙
+Выигрыш: <b>+{result.result_value - stake}</b> 🦊
 
 💬 <i>"{result.fox_comment}"</i>
 
-🪙 Баланс: <b>{player.coins}</b> Лискоинов
+🦊 Баланс: <b>{player.coins}</b> Лискоинов
 """
     else:
         text = f"""🦊 <b>СДЕЛКА С ЛИСОЙ</b>
 
 ❌ <b>ПРОИГРЫШ</b>
 
-Ставка: {stake} 🪙
-Потеряно: <b>-{stake}</b> 🪙
+Ставка: {stake} 🦊
+Потеряно: <b>-{stake}</b> 🦊
 
 💬 <i>"{result.fox_comment}"</i>
 
-🪙 Баланс: <b>{player.coins}</b> Лискоинов
+🦊 Баланс: <b>{player.coins}</b> Лискоинов
 """
     
     builder = InlineKeyboardBuilder()
@@ -470,7 +470,7 @@ async def handle_play_wheel(callback: CallbackQuery, session: AsyncSession):
 async def handle_no_coins(callback: CallbackQuery):
     """Недостаточно монет"""
     await callback.answer(
-        f"❌ Недостаточно Лискоинов!\nНужно: {SPIN_COST_COINS} 🪙",
+        f"❌ Недостаточно Лискоинов!\nНужно: {SPIN_COST_COINS} 🦊",
         show_alert=True
     )
 
@@ -573,9 +573,9 @@ async def handle_claim_quests(callback: CallbackQuery, session: AsyncSession):
         text = f"""🎁 <b>Награды получены!</b>
 
 ✅ Выполнено заданий: <b>{claimed_count}</b>
-🪙 Получено: <b>+{total_reward} Лискоинов</b>
+🦊 Получено: <b>+{total_reward} Лискоинов</b>
 
-💰 Твой баланс: <b>{player.coins}</b> 🪙
+💰 Твой баланс: <b>{player.coins}</b> 🦊
 
 🦊 <i>Возвращайся завтра за новыми заданиями!</i>
 """
@@ -850,24 +850,24 @@ async def handle_balance(callback: CallbackQuery, session: AsyncSession):
     rub_equivalent = player.coins / 2
     min_convert = 100  # Минимум для конвертации
     
-    text = f"""🪙 <b>Баланс</b>
+    text = f"""🦊 <b>Баланс</b>
 
-🪙 Лискоины: <b>{player.coins}</b>
+🦊 Лискоины: <b>{player.coins}</b>
 💰 Эквивалент: <b>~{rub_equivalent:.0f} ₽</b>
 
 ✨ Свет Лисы: <b>{player.light}</b>
 
 💳 Реальный баланс: <b>{real_balance:.0f} ₽</b>
 
-<i>Курс обмена: 50 🪙 = 25 ₽</i>
-<i>Минимум для обмена: {min_convert} 🪙</i>
+<i>Курс обмена: 50 🦊 = 25 ₽</i>
+<i>Минимум для обмена: {min_convert} 🦊</i>
 """
     
     builder = InlineKeyboardBuilder()
     
     if player.coins >= min_convert:
         builder.row(InlineKeyboardButton(
-            text=f"💱 Обменять {player.coins} 🪙 → {rub_equivalent:.0f} ₽",
+            text=f"💱 Обменять {player.coins} 🦊 → {rub_equivalent:.0f} ₽",
             callback_data="fox_convert_coins"
         ))
     
@@ -895,7 +895,7 @@ async def handle_convert_coins(callback: CallbackQuery, session: AsyncSession):
     
     min_convert = 100
     if player.coins < min_convert:
-        await callback.answer(f"❌ Минимум для обмена: {min_convert} 🪙", show_alert=True)
+        await callback.answer(f"❌ Минимум для обмена: {min_convert} 🦊", show_alert=True)
         return
     
     # Считаем сумму
@@ -912,7 +912,7 @@ async def handle_convert_coins(callback: CallbackQuery, session: AsyncSession):
     
     text = f"""💱 <b>Обмен завершён!</b>
 
-✅ Обменяно: <b>{coins_to_convert}</b> 🪙
+✅ Обменяно: <b>{coins_to_convert}</b> 🦊
 💰 Получено: <b>+{rub_amount:.0f} ₽</b>
 
 💳 Баланс: <b>{new_balance:.0f} ₽</b>
@@ -921,7 +921,7 @@ async def handle_convert_coins(callback: CallbackQuery, session: AsyncSession):
 """
     
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🪙 Баланс", callback_data="fox_balance"))
+    builder.row(InlineKeyboardButton(text="🦊 Баланс", callback_data="fox_balance"))
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())
@@ -944,13 +944,13 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
         for boost in boosts:
             if boost.boost_type.startswith("luck_"):
                 percent = boost.boost_type.replace("luck_", "")
-                active_boosts_text += f"🍀 Буст удачи +{percent}% ({boost.uses_left} исп.)\n"
+                active_boosts_text += f"🔮 Буст удачи +{percent}% ({boost.uses_left} исп.)\n"
     
     if not active_boosts_text:
         active_boosts_text = "<i>Нет активных бустов</i>\n"
     
     # Формируем текст с доступностью
-    coins_status = f"🪙 Лискоины: <b>{player.coins}</b>"
+    coins_status = f"🦊 Лискоины: <b>{player.coins}</b>"
     light_status = f"✨ Свет Лисы: <b>{player.light}</b>"
     
     text = f"""🛒 <b>Магазин бустов</b>
@@ -962,28 +962,28 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
 {active_boosts_text}
 <b>Товары:</b>
 
-🍀 Буст удачи +10% — 50 🪙
-🍀 Буст удачи +20% — 100 🪙
-🎫 Доп. попытка — 30 🪙
+🔮 Буст удачи +10% — 50 🦊
+🔮 Буст удачи +20% — 100 🦊
+🎫 Доп. попытка — 30 🦊
 """
     
     builder = InlineKeyboardBuilder()
     
     # Кнопки покупки (всегда показываем, но с 🔒 если не хватает)
     if player.coins >= 50:
-        builder.row(InlineKeyboardButton(text="✅ +10% удачи (50 🪙)", callback_data="fox_buy_boost_10"))
+        builder.row(InlineKeyboardButton(text="✅ +10% удачи (50 🦊)", callback_data="fox_buy_boost_10"))
     else:
-        builder.row(InlineKeyboardButton(text="🔒 +10% удачи (50 🪙)", callback_data="fox_no_coins_50"))
+        builder.row(InlineKeyboardButton(text="🔒 +10% удачи (50 🦊)", callback_data="fox_no_coins_50"))
     
     if player.coins >= 100:
-        builder.row(InlineKeyboardButton(text="✅ +20% удачи (100 🪙)", callback_data="fox_buy_boost_20"))
+        builder.row(InlineKeyboardButton(text="✅ +20% удачи (100 🦊)", callback_data="fox_buy_boost_20"))
     else:
-        builder.row(InlineKeyboardButton(text="🔒 +20% удачи (100 🪙)", callback_data="fox_no_coins_100"))
+        builder.row(InlineKeyboardButton(text="🔒 +20% удачи (100 🦊)", callback_data="fox_no_coins_100"))
     
     if player.coins >= 30:
-        builder.row(InlineKeyboardButton(text="✅ Попытка (30 🪙)", callback_data="fox_buy_spin"))
+        builder.row(InlineKeyboardButton(text="✅ Попытка (30 🦊)", callback_data="fox_buy_spin"))
     else:
-        builder.row(InlineKeyboardButton(text="🔒 Попытка (30 🪙)", callback_data="fox_no_coins_30"))
+        builder.row(InlineKeyboardButton(text="🔒 Попытка (30 🦊)", callback_data="fox_no_coins_30"))
     
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
@@ -1063,9 +1063,9 @@ async def handle_buy_spin(callback: CallbackQuery, session: AsyncSession):
     # Показываем экран подтверждения
     text = f"""✅ <b>Попытка куплена!</b>
 
-🎫 Списано: <b>-{cost}</b> 🪙
+🎫 Списано: <b>-{cost}</b> 🦊
 🛒 Купленных попыток: <b>{new_paid_spins}</b>
-🪙 Осталось монет: <b>{player.coins - cost}</b> 🪙
+🦊 Осталось монет: <b>{player.coins - cost}</b> 🦊
 
 <i>Иди и испытай удачу!</i>
 """
@@ -1334,7 +1334,7 @@ async def handle_calendar_claim(callback: CallbackQuery, session: AsyncSession):
     # Текст результата
     reward_parts = []
     if coins_added:
-        reward_parts.append(f"+{coins_added} 🪙")
+        reward_parts.append(f"+{coins_added} 🦊")
     if spins_added:
         reward_parts.append(f"+{spins_added} 🎫")
     if light_added:
@@ -1388,7 +1388,7 @@ async def handle_leaderboard(callback: CallbackQuery, session: AsyncSession):
     )
     builder.row(
         InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
-        InlineKeyboardButton(text="🪙 Монеты", callback_data="fox_lb_coins"),
+        InlineKeyboardButton(text="🦊 Монеты", callback_data="fox_lb_coins"),
     )
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
@@ -1412,7 +1412,7 @@ async def handle_lb_week(callback: CallbackQuery, session: AsyncSession):
     )
     builder.row(
         InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
-        InlineKeyboardButton(text="🪙 Монеты", callback_data="fox_lb_coins"),
+        InlineKeyboardButton(text="🦊 Монеты", callback_data="fox_lb_coins"),
     )
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
@@ -1436,7 +1436,7 @@ async def handle_lb_month(callback: CallbackQuery, session: AsyncSession):
     )
     builder.row(
         InlineKeyboardButton(text="🔥 Серия", callback_data="fox_lb_streak"),
-        InlineKeyboardButton(text="🪙 Монеты", callback_data="fox_lb_coins"),
+        InlineKeyboardButton(text="🦊 Монеты", callback_data="fox_lb_coins"),
     )
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
@@ -1460,7 +1460,7 @@ async def handle_lb_streak(callback: CallbackQuery, session: AsyncSession):
     )
     builder.row(
         InlineKeyboardButton(text="✅ Серия", callback_data="fox_lb_streak"),
-        InlineKeyboardButton(text="🪙 Монеты", callback_data="fox_lb_coins"),
+        InlineKeyboardButton(text="🦊 Монеты", callback_data="fox_lb_coins"),
     )
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
@@ -1475,7 +1475,7 @@ async def handle_lb_coins(callback: CallbackQuery, session: AsyncSession):
     from .leaderboard import get_top_coins, format_leaderboard
     
     top = await get_top_coins(session, limit=10)
-    text = format_leaderboard(top, "coins", "🪙", "📊 <b>Топ-10 по Лискоинам</b>")
+    text = format_leaderboard(top, "coins", "🦊", "📊 <b>Топ-10 по Лискоинам</b>")
     
     builder = InlineKeyboardBuilder()
     builder.row(
@@ -1560,14 +1560,14 @@ async def handle_referrals(callback: CallbackQuery, session: AsyncSession):
 <code>{ref_link}</code>
 
 <b>Награды:</b>
-• Ты получишь: <b>{REFERRER_BONUS}</b> 🪙
-• Друг получит: <b>{REFERRED_BONUS}</b> 🪙
+• Ты получишь: <b>{REFERRER_BONUS}</b> 🦊
+• Друг получит: <b>{REFERRED_BONUS}</b> 🦊
 
 <i>Бонус начисляется когда друг сыграет первую игру!</i>
 
 📊 <b>Твоя статистика:</b>
 👥 Приглашено: <b>{player.total_referrals}</b> чел.
-💰 Заработано: <b>{player.total_referrals * REFERRER_BONUS}</b> 🪙
+💰 Заработано: <b>{player.total_referrals * REFERRER_BONUS}</b> 🦊
 """
     
     builder = InlineKeyboardBuilder()

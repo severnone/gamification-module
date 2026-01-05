@@ -8,13 +8,13 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 # Награды за каждый день календаря
 CALENDAR_REWARDS = {
-    1: {"coins": 10, "text": "10 🪙"},
-    2: {"coins": 15, "text": "15 🪙"},
-    3: {"coins": 20, "spins": 1, "text": "20 🪙 + 🎫"},
-    4: {"coins": 25, "text": "25 🪙"},
-    5: {"coins": 30, "text": "30 🪙"},
-    6: {"coins": 40, "spins": 1, "text": "40 🪙 + 🎫"},
-    7: {"coins": 50, "light": 5, "spins": 2, "text": "50 🪙 + 5✨ + 2🎫"},  # Бонусный день!
+    1: {"coins": 10, "text": "10 🦊"},
+    2: {"coins": 15, "text": "15 🦊"},
+    3: {"coins": 20, "spins": 1, "text": "20 🦊 + 🎫"},
+    4: {"coins": 25, "text": "25 🦊"},
+    5: {"coins": 30, "text": "30 🦊"},
+    6: {"coins": 40, "spins": 1, "text": "40 🦊 + 🎫"},
+    7: {"coins": 50, "light": 5, "spins": 2, "text": "50 🦊 + 5✨ + 2🎫"},  # Бонусный день!
 }
 
 
