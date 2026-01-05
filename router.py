@@ -16,6 +16,9 @@ from .texts import (
     FOX_DEN_BUTTON,
 )
 
+# Путь к картинке Логова Лисы
+FOX_DEN_IMAGE = "img/fox_den.jpg"
+
 
 router = Router(name="gamification")
 
@@ -153,6 +156,7 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession, admin: 
         target_message=callback.message,
         text=text,
         reply_markup=build_fox_den_menu(),
+        media_path=FOX_DEN_IMAGE,
     )
     await callback.answer()
 
