@@ -1363,7 +1363,7 @@ async def handle_buy_spin(callback: CallbackQuery, session: AsyncSession):
 _pending_vpn_purchase: dict[int, dict] = {}  # {tg_id: {"days": int, "cost": int}}
 
 
-@router.callback_query(F.data.startswith("fox_buy_vpn_"))
+@router.callback_query(F.data.in_(["fox_buy_vpn_3", "fox_buy_vpn_7", "fox_buy_vpn_14"]))
 async def handle_buy_vpn_days(callback: CallbackQuery, session: AsyncSession):
     """Покупка дней VPN — показываем выбор подписки"""
     await ensure_db()
