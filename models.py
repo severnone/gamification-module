@@ -168,7 +168,98 @@ class FoxCasinoGame(Base):
     multiplier = Column(Float, nullable=False)  # 0, 2, 3
     payout = Column(Float, nullable=False)  # Выплата
     
+    # Двухфазная игра
+    phase = Column(Integer, default=1)  # 1 = первый бросок, 2 = рискнул
+    was_doubled = Column(Boolean, default=False)  # Игрок рискнул удвоить
+    
+    # Near miss (почти выиграл)
+    near_miss = Column(Boolean, default=False)
+    near_miss_text = Column(String(255), nullable=True)
+    
+    # ID сессии
+    session_id = Column(Integer, ForeignKey("fox_casino_sessions.id"), nullable=True)
+    
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FoxCasinoSession(Base):
+    """Сессия игры в казино (от входа до выхода)"""
+    __tablename__ = "fox_casino_sessions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Статистика сессии
+    games_played = Column(Integer, default=0)
+    total_bet = Column(Float, default=0)  # Всего поставлено
+    total_won = Column(Float, default=0)  # Всего выиграно
+    net_result = Column(Float, default=0)  # Итог (+ или -)
+    
+    # Серии в сессии
+    max_win_streak = Column(Integer, default=0)
+    max_lose_streak = Column(Integer, default=0)
+    
+    # Состояние
+    is_active = Column(Boolean, default=True)  # Сессия активна
+    
+    started_at = Column(DateTime, default=datetime.utcnow)
+    ended_at = Column(DateTime, nullable=True)
+    
+    # Связь с играми
+    games = relationship("FoxCasinoGame", backref="session", foreign_keys=[FoxCasinoGame.session_id])
+
+
+class FoxCasinoProfile(Base):
+    """Профиль игрока в казино (постоянные данные)"""
+    __tablename__ = "fox_casino_profiles"
+
+    tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), primary_key=True)
+    
+    # Статистика всех времён
+    total_visits = Column(Integer, default=0)  # Сколько раз заходил
+    total_games = Column(Integer, default=0)  # Всего игр
+    total_wagered = Column(Float, default=0)  # Всего поставлено за всё время
+    total_won = Column(Float, default=0)  # Всего выиграно
+    total_lost = Column(Float, default=0)  # Всего проиграно
+    biggest_win = Column(Float, default=0)  # Самый большой выигрыш
+    biggest_loss = Column(Float, default=0)  # Самый большой проигрыш за сессию
+    
+    # Серии (текущие)
+    current_win_streak = Column(Integer, default=0)
+    current_lose_streak = Column(Integer, default=0)
+    
+    # Рекорды серий
+    best_win_streak = Column(Integer, default=0)
+    worst_lose_streak = Column(Integer, default=0)
+    
+    # Текущая сессия
+    current_session_id = Column(Integer, nullable=True)
+    
+    # Ограничения
+    blocked_until = Column(DateTime, nullable=True)  # Самоблокировка
+    cooldown_until = Column(DateTime, nullable=True)  # Кулдаун между играми
+    forced_break_until = Column(DateTime, nullable=True)  # Принудительный перерыв
+    
+    # Счётчики для кулдауна
+    games_in_row = Column(Integer, default=0)  # Игр подряд без перерыва
+    last_game_at = Column(DateTime, nullable=True)
+    
+    # Дневная статистика
+    daily_games = Column(Integer, default=0)
+    daily_lost = Column(Float, default=0)
+    daily_won = Column(Float, default=0)
+    daily_reset_date = Column(DateTime, nullable=True)
+    
+    # Результат прошлой сессии (для "незакрытого гештальта")
+    last_session_result = Column(Float, default=0)  # + или -
+    last_session_games = Column(Integer, default=0)
+    
+    # "Золотой час" - случайный бонусный час
+    golden_hour_start = Column(DateTime, nullable=True)
+    golden_hour_notified = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class FoxQuest(Base):
