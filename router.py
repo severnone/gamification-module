@@ -1404,6 +1404,12 @@ GAME_COOLDOWN_SECONDS = 30  # Кулдаун после проигрыша
 
 def check_game_cooldown(tg_id: int, game_type: str) -> tuple[bool, int]:
     """Проверить кулдаун для конкретной игры. Возвращает (can_play, seconds_left)"""
+    from .casino import CASINO_TEST_MODE
+    
+    # В тестовом режиме кулдаунов нет
+    if CASINO_TEST_MODE:
+        return True, 0
+    
     if tg_id not in _game_cooldowns:
         return True, 0
     
@@ -1671,6 +1677,12 @@ async def play_dice_game(callback: CallbackQuery, session: AsyncSession, bet: in
     else:
         # Финальный результат
         text = format_result_message(result)
+        
+        # Устанавливаем кулдаун для игры "dice"
+        if result.outcome in ("lose", "near_miss"):
+            set_game_cooldown(tg_id, "dice")
+        else:
+            clear_game_cooldown(tg_id, "dice")
         
         # Показать серию
         profile = await get_or_create_casino_profile(session, tg_id)
@@ -2524,6 +2536,9 @@ async def handle_casino_take(callback: CallbackQuery, session: AsyncSession):
     
     result = await play_casino_phase2_take(session, tg_id, bet, current_value)
     
+    # Устанавливаем кулдаун для игры "dice" (take = выигрыш)
+    clear_game_cooldown(tg_id, "dice")
+    
     text = format_result_message(result)
     
     # Показать серию
@@ -2597,6 +2612,12 @@ async def handle_casino_risk(callback: CallbackQuery, session: AsyncSession):
     
     # Результат
     result = await play_casino_phase2_risk(session, tg_id, bet)
+    
+    # Устанавливаем кулдаун для игры "dice"
+    if result.outcome == "lose":
+        set_game_cooldown(tg_id, "dice")
+    else:
+        clear_game_cooldown(tg_id, "dice")
     
     text = format_result_message(result)
     

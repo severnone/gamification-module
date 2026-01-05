@@ -28,6 +28,10 @@ from .models import FoxCasinoGame, FoxCasinoSession, FoxCasinoProfile
 
 # ==================== НАСТРОЙКИ ====================
 
+# 🧪 ТЕСТОВЫЙ РЕЖИМ — отключает кулдауны и лимиты!
+# True = без ограничений, False = нормальная работа
+CASINO_TEST_MODE = True
+
 # Ставки (всегда целые рубли!)
 MIN_BET = 10
 MAX_BET = 500
@@ -531,37 +535,39 @@ async def can_enter_casino(session: AsyncSession, tg_id: int) -> tuple[bool, str
     balance = await get_balance(session, tg_id)
     now = datetime.utcnow()
     
-    # Самоблокировка
-    if profile.blocked_until and profile.blocked_until > now:
-        days_left = (profile.blocked_until - now).days + 1
-        return False, "self_blocked", {"days": days_left}
+    # В тестовом режиме пропускаем все ограничения кроме баланса
+    if not CASINO_TEST_MODE:
+        # Самоблокировка
+        if profile.blocked_until and profile.blocked_until > now:
+            days_left = (profile.blocked_until - now).days + 1
+            return False, "self_blocked", {"days": days_left}
+        
+        # Принудительный перерыв
+        if profile.forced_break_until and profile.forced_break_until > now:
+            remaining = profile.forced_break_until - now
+            time_str = format_timedelta(remaining)
+            return False, "forced_break", {
+                "streak": FORCED_BREAK_AFTER_LOSSES,
+                "time": time_str
+            }
+        
+        # Кулдаун между играми (только после проигрыша)
+        if profile.cooldown_until and profile.cooldown_until > now:
+            remaining = (profile.cooldown_until - now).total_seconds()
+            phrase = random.choice(COOLDOWN_PHRASES)
+            return False, "cooldown", {"seconds": int(remaining), "phrase": phrase}
+        
+        # Дневной лимит проигрыша
+        if profile.daily_lost >= DAILY_LOSS_LIMIT:
+            return False, "daily_limit", {"lost": profile.daily_lost, "limit": DAILY_LOSS_LIMIT}
+        
+        # Дневной лимит игр
+        if profile.daily_games >= DAILY_GAMES_LIMIT:
+            return False, "daily_games", {"games": profile.daily_games}
     
-    # Принудительный перерыв
-    if profile.forced_break_until and profile.forced_break_until > now:
-        remaining = profile.forced_break_until - now
-        time_str = format_timedelta(remaining)
-        return False, "forced_break", {
-            "streak": FORCED_BREAK_AFTER_LOSSES,  # Показываем сколько проигрышей было, а не текущий (уже сброшенный) счётчик
-            "time": time_str
-        }
-    
-    # Кулдаун между играми (только после проигрыша)
-    if profile.cooldown_until and profile.cooldown_until > now:
-        remaining = (profile.cooldown_until - now).total_seconds()
-        phrase = random.choice(COOLDOWN_PHRASES)
-        return False, "cooldown", {"seconds": int(remaining), "phrase": phrase}
-    
-    # Баланс
+    # Баланс всегда проверяем (даже в тестовом режиме)
     if balance < MIN_BET:
         return False, "no_balance", {"min_bet": MIN_BET, "balance": balance}
-    
-    # Дневной лимит проигрыша
-    if profile.daily_lost >= DAILY_LOSS_LIMIT:
-        return False, "daily_limit", {"lost": profile.daily_lost, "limit": DAILY_LOSS_LIMIT}
-    
-    # Дневной лимит игр
-    if profile.daily_games >= DAILY_GAMES_LIMIT:
-        return False, "daily_games", {"games": profile.daily_games}
     
     return True, "ok", {"balance": balance}
 
