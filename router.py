@@ -17,7 +17,8 @@ from .texts import (
 )
 
 # Путь к картинке Логова Лисы
-FOX_DEN_IMAGE = "img/fox_den.jpg"
+from pathlib import Path
+FOX_DEN_IMAGE = str(Path(__file__).parent.parent.parent / "img" / "fox_den.jpg")
 
 
 router = Router(name="gamification")
