@@ -36,24 +36,51 @@ async def handle_fox_den(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("fox_"))
-async def handle_fox_actions(callback: CallbackQuery):
-    """Обработчик всех действий в Логове Лисы"""
-    action = callback.data
-    logger.info(f"[Gamification] Действие: {action} от {callback.from_user.id}")
-    
-    if action == "fox_den":
-        return  # Уже обработано выше
-    
-    if action == "fox_try_luck":
+@router.callback_query(F.data == "fox_try_luck")
+async def handle_try_luck(callback: CallbackQuery):
+    """Испытать удачу"""
+    logger.info(f"[Gamification] fox_try_luck от {callback.from_user.id}")
+    try:
         await callback.answer("🎰 Скоро здесь будет игра!", show_alert=True)
-    elif action == "fox_quests":
+    except Exception as e:
+        logger.error(f"[Gamification] Ошибка answer: {e}")
+
+
+@router.callback_query(F.data == "fox_quests")
+async def handle_quests(callback: CallbackQuery):
+    """Задания"""
+    logger.info(f"[Gamification] fox_quests от {callback.from_user.id}")
+    try:
         await callback.answer("🧰 Задания скоро появятся!", show_alert=True)
-    elif action == "fox_my_prizes":
+    except Exception as e:
+        logger.error(f"[Gamification] Ошибка answer: {e}")
+
+
+@router.callback_query(F.data == "fox_my_prizes")
+async def handle_my_prizes(callback: CallbackQuery):
+    """Мои призы"""
+    logger.info(f"[Gamification] fox_my_prizes от {callback.from_user.id}")
+    try:
         await callback.answer("🎁 Призы скоро появятся!", show_alert=True)
-    elif action == "fox_balance":
+    except Exception as e:
+        logger.error(f"[Gamification] Ошибка answer: {e}")
+
+
+@router.callback_query(F.data == "fox_balance")
+async def handle_balance(callback: CallbackQuery):
+    """Баланс"""
+    logger.info(f"[Gamification] fox_balance от {callback.from_user.id}")
+    try:
         await callback.answer("🪙 Баланс скоро появится!", show_alert=True)
-    elif action == "fox_upgrades":
+    except Exception as e:
+        logger.error(f"[Gamification] Ошибка answer: {e}")
+
+
+@router.callback_query(F.data == "fox_upgrades")
+async def handle_upgrades(callback: CallbackQuery):
+    """Улучшения"""
+    logger.info(f"[Gamification] fox_upgrades от {callback.from_user.id}")
+    try:
         await callback.answer("⭐ Улучшения скоро появятся!", show_alert=True)
-    else:
-        await callback.answer("Неизвестное действие", show_alert=True)
+    except Exception as e:
+        logger.error(f"[Gamification] Ошибка answer: {e}")
