@@ -137,3 +137,21 @@ class FoxDeal(Base):
     fox_comment = Column(String(255), nullable=True)
     
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class FoxCasinoGame(Base):
+    """История игр в Лисьем казино (реальные ставки!)"""
+    __tablename__ = "fox_casino_games"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    tg_id = Column(BigInteger, ForeignKey("users.tg_id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # Ставка в рублях
+    bet = Column(Float, nullable=False)
+    
+    # Результат
+    won = Column(Boolean, nullable=False)
+    multiplier = Column(Float, nullable=False)  # 0, 2, 3
+    payout = Column(Float, nullable=False)  # Выплата
+    
+    created_at = Column(DateTime, default=datetime.utcnow)

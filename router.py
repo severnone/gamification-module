@@ -541,3 +541,153 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
         reply_markup=build_back_to_den_kb(),
     )
     await callback.answer()
+
+
+# ==================== ЛИСЬЕ КАЗИНО (реальные ставки!) ====================
+
+@router.callback_query(F.data == "fox_casino")
+async def handle_casino_menu(callback: CallbackQuery, session: AsyncSession):
+    """Главное меню казино"""
+    await ensure_db()
+    logger.info(f"[Casino] Открытие казино от {callback.from_user.id}")
+    await callback.answer()
+    
+    from database.users import get_balance
+    from .casino import (
+        CASINO_INTRO, CASINO_BLOCKED_NO_BALANCE, CASINO_BLOCKED_LIMIT,
+        MIN_BET, FIXED_BETS, DAILY_LOSS_LIMIT, get_daily_losses
+    )
+    
+    balance = await get_balance(session, callback.from_user.id)
+    daily_losses = await get_daily_losses(session, callback.from_user.id)
+    
+    # Проверяем лимит
+    if daily_losses >= DAILY_LOSS_LIMIT:
+        text = CASINO_BLOCKED_LIMIT.format(lost=daily_losses, limit=DAILY_LOSS_LIMIT)
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+        await edit_or_send_message(callback.message, text, builder.as_markup())
+        return
+    
+    # Проверяем баланс
+    if balance < MIN_BET:
+        text = CASINO_BLOCKED_NO_BALANCE.format(min_bet=MIN_BET, balance=balance)
+        builder = InlineKeyboardBuilder()
+        builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+        await edit_or_send_message(callback.message, text, builder.as_markup())
+        return
+    
+    text = CASINO_INTRO.format(balance=balance)
+    
+    # Кнопки ставок
+    builder = InlineKeyboardBuilder()
+    row = []
+    for bet in FIXED_BETS:
+        if balance >= bet:
+            row.append(InlineKeyboardButton(text=f"{bet} ₽", callback_data=f"fox_casino_bet_{bet}"))
+    
+    if row:
+        builder.row(*row[:2])
+        if len(row) > 2:
+            builder.row(*row[2:])
+    
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("fox_casino_bet_"))
+async def handle_casino_bet_select(callback: CallbackQuery, session: AsyncSession):
+    """Подтверждение ставки"""
+    await ensure_db()
+    
+    bet = int(callback.data.split("_")[-1])
+    logger.info(f"[Casino] Выбор ставки {bet}₽ от {callback.from_user.id}")
+    await callback.answer()
+    
+    from database.users import get_balance
+    from .casino import BET_CONFIRM, can_play_casino
+    
+    can_play, error = await can_play_casino(session, callback.from_user.id, bet)
+    
+    if not can_play:
+        await callback.answer(f"❌ Ошибка: {error}", show_alert=True)
+        return
+    
+    text = BET_CONFIRM.format(bet=bet)
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🎲 Бросить кость", callback_data=f"fox_casino_play_{bet}"))
+    builder.row(InlineKeyboardButton(text="🚪 Передумал", callback_data="fox_casino"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("fox_casino_play_"))
+async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
+    """Игра в казино — СПИСАНИЕ РЕАЛЬНЫХ ДЕНЕГ!"""
+    import asyncio
+    
+    await ensure_db()
+    
+    bet = int(callback.data.split("_")[-1])
+    logger.info(f"[Casino] ИГРА! Ставка {bet}₽ от {callback.from_user.id}")
+    await callback.answer()
+    
+    from .casino import (
+        play_casino, can_play_casino,
+        ROLLING, RESULT_LOSE, RESULT_WIN_X2, RESULT_WIN_X3
+    )
+    
+    # Финальная проверка
+    can_play, error = await can_play_casino(session, callback.from_user.id, bet)
+    if not can_play:
+        await callback.answer(f"❌ {error}", show_alert=True)
+        return
+    
+    # Удаляем старое сообщение
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    
+    # Анимация
+    msg = await callback.message.answer(ROLLING.format(bet=bet))
+    
+    # Пауза 2-3 секунды для напряжения
+    await asyncio.sleep(2.0)
+    
+    await msg.edit_text(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b>\n\n"
+        f"Ставка: <b>{bet} ₽</b>\n\n"
+        f"🎲 <i>Кость катится...</i>"
+    )
+    
+    await asyncio.sleep(1.5)
+    
+    await msg.edit_text(
+        f"🦊 <b>ЛИСЬЕ КАЗИНО</b>\n\n"
+        f"Ставка: <b>{bet} ₽</b>\n\n"
+        f"🦊 <i>Лиса смотрит на результат...</i>"
+    )
+    
+    await asyncio.sleep(1.0)
+    
+    # ИГРА!
+    result = await play_casino(session, callback.from_user.id, bet)
+    
+    # Показываем результат
+    if result.outcome == "lose":
+        text = RESULT_LOSE.format(bet=bet, balance=result.new_balance)
+    elif result.outcome == "win_x2":
+        winnings = int(result.bet * result.multiplier - result.bet)
+        text = RESULT_WIN_X2.format(bet=bet, winnings=winnings, balance=result.new_balance)
+    else:  # win_x3
+        winnings = int(result.bet * result.multiplier - result.bet)
+        text = RESULT_WIN_X3.format(bet=bet, winnings=winnings, balance=result.new_balance)
+    
+    builder = InlineKeyboardBuilder()
+    builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino"))
+    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
+    
+    await msg.edit_text(text, reply_markup=builder.as_markup())
