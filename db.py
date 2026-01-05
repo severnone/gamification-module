@@ -56,11 +56,9 @@ async def check_and_reset_daily_spin(session: AsyncSession, tg_id: int) -> bool:
     """
     Проверить и сбросить ежедневную попытку.
     В выходные добавляет +1 бонусную попытку.
-    VIP добавляет +1 попытку.
     Возвращает True, если попытка доступна.
     """
     from .events import get_weekend_bonus_spins
-    from .vip import is_vip, VIP_EXTRA_SPINS
     
     player = await get_or_create_player(session, tg_id)
     today = datetime.utcnow().date()
@@ -69,10 +67,6 @@ async def check_and_reset_daily_spin(session: AsyncSession, tg_id: int) -> bool:
     if player.last_free_spin_date is None or player.last_free_spin_date.date() < today:
         # Базовая попытка + бонусы
         base_spins = 1 + get_weekend_bonus_spins()
-        
-        # VIP бонус
-        if await is_vip(session, tg_id):
-            base_spins += VIP_EXTRA_SPINS
         
         await session.execute(
             update(FoxPlayer)

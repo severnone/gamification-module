@@ -934,12 +934,9 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
     logger.info(f"[Gamification] fox_upgrades от {callback.from_user.id}")
     
     from .db import get_active_boosts
-    from .vip import is_vip, get_vip_days_left, VIP_PRICE_LIGHT, VIP_PRICE_RUB, VIP_DAYS
     
     player = await get_or_create_player(session, callback.from_user.id)
     boosts = await get_active_boosts(session, callback.from_user.id)
-    has_vip = await is_vip(session, callback.from_user.id)
-    vip_days = await get_vip_days_left(session, callback.from_user.id)
     
     # Форматируем активные бусты
     active_boosts_text = ""
@@ -948,9 +945,6 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
             if boost.boost_type.startswith("luck_"):
                 percent = boost.boost_type.replace("luck_", "")
                 active_boosts_text += f"🍀 Буст удачи +{percent}% ({boost.uses_left} исп.)\n"
-    
-    if has_vip:
-        active_boosts_text += f"💎 VIP-статус ({vip_days} дн.)\n"
     
     if not active_boosts_text:
         active_boosts_text = "<i>Нет активных бустов</i>\n"
@@ -971,9 +965,6 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
 🍀 Буст удачи +10% — 50 🪙
 🍀 Буст удачи +20% — 100 🪙
 🎫 Доп. попытка — 30 🪙
-
-💎 <b>VIP ({VIP_DAYS} дней)</b> — {VIP_PRICE_LIGHT} ✨ или {VIP_PRICE_RUB} ₽
-<i>+1 попытка/день, +10% удача</i>
 """
     
     builder = InlineKeyboardBuilder()
@@ -985,9 +976,6 @@ async def handle_upgrades(callback: CallbackQuery, session: AsyncSession):
         builder.row(InlineKeyboardButton(text="🍀 +20% (100 🪙)", callback_data="fox_buy_boost_20"))
     if player.coins >= 30:
         builder.row(InlineKeyboardButton(text="🎫 Попытка (30 🪙)", callback_data="fox_buy_spin"))
-    
-    # VIP
-    builder.row(InlineKeyboardButton(text="💎 Купить VIP", callback_data="fox_buy_vip"))
     
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
@@ -1070,141 +1058,6 @@ async def handle_buy_spin(callback: CallbackQuery, session: AsyncSession):
     builder = InlineKeyboardBuilder()
     builder.row(InlineKeyboardButton(text="🎰 Играть!", callback_data="fox_try_luck"))
     builder.row(InlineKeyboardButton(text="⭐ Улучшения", callback_data="fox_upgrades"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
-    
-    await edit_or_send_message(callback.message, text, builder.as_markup())
-
-
-# ==================== VIP ====================
-
-@router.callback_query(F.data == "fox_buy_vip")
-async def handle_buy_vip(callback: CallbackQuery, session: AsyncSession):
-    """Экран покупки VIP"""
-    await ensure_db()
-    logger.info(f"[Gamification] fox_buy_vip от {callback.from_user.id}")
-    await callback.answer()
-    
-    from .vip import is_vip, get_vip_days_left, VIP_PRICE_LIGHT, VIP_PRICE_RUB, VIP_EXTRA_SPINS, VIP_LUCK_BOOST, VIP_DAYS
-    from database.users import get_balance
-    
-    player = await get_or_create_player(session, callback.from_user.id)
-    has_vip = await is_vip(session, callback.from_user.id)
-    vip_days = await get_vip_days_left(session, callback.from_user.id)
-    balance = await get_balance(session, callback.from_user.id)
-    
-    if has_vip:
-        status_text = f"💎 <b>VIP активен!</b> Осталось: {vip_days} дн.\n<i>Можешь продлить — дни добавятся!</i>"
-    else:
-        status_text = "❌ VIP не активен"
-    
-    # Проверяем доступность покупки
-    can_buy_light = player.light >= VIP_PRICE_LIGHT
-    can_buy_rub = balance >= VIP_PRICE_RUB
-    
-    text = f"""💎 <b>VIP-статус</b>
-
-{status_text}
-
-<b>Преимущества:</b>
-• +{VIP_EXTRA_SPINS} бесплатная попытка в день
-• +{VIP_LUCK_BOOST}% к шансам на редкие призы
-• 🌟 Статус в профиле
-
-<b>Цена ({VIP_DAYS} дней):</b>
-• {VIP_PRICE_LIGHT} ✨ Свет Лисы {"✅" if can_buy_light else "❌"}
-• {VIP_PRICE_RUB} ₽ с баланса {"✅" if can_buy_rub else "❌"}
-
-<b>Твои ресурсы:</b>
-✨ Свет Лисы: <b>{player.light}</b>
-💳 Баланс: <b>{balance:.0f} ₽</b>
-"""
-    
-    builder = InlineKeyboardBuilder()
-    
-    if can_buy_light:
-        builder.row(InlineKeyboardButton(
-            text=f"✨ Купить за {VIP_PRICE_LIGHT} Света",
-            callback_data="fox_vip_buy_light"
-        ))
-    
-    if can_buy_rub:
-        builder.row(InlineKeyboardButton(
-            text=f"💳 Купить за {VIP_PRICE_RUB} ₽",
-            callback_data="fox_vip_buy_rub"
-        ))
-    
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_upgrades"))
-    
-    await edit_or_send_message(callback.message, text, builder.as_markup())
-
-
-@router.callback_query(F.data == "fox_vip_buy_light")
-async def handle_vip_buy_light(callback: CallbackQuery, session: AsyncSession):
-    """Купить VIP за Свет Лисы"""
-    await ensure_db()
-    logger.info(f"[Gamification] fox_vip_buy_light от {callback.from_user.id}")
-    await callback.answer()
-    
-    from .vip import buy_vip_with_light
-    
-    result = await buy_vip_with_light(session, callback.from_user.id)
-    
-    if not result:
-        await callback.answer("❌ Недостаточно Света Лисы!", show_alert=True)
-        return
-    
-    expires_str = result["expires"].strftime("%d.%m.%Y")
-    
-    text = f"""💎 <b>VIP активирован!</b>
-
-✅ Списано: {result["spent"]} ✨
-📅 Действует до: {expires_str}
-
-<b>Теперь тебе доступны:</b>
-• +1 бесплатная попытка в день
-• +10% к шансам на редкие призы
-
-🦊 <i>Лиса благодарит за доверие!</i>
-"""
-    
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🎰 Играть!", callback_data="fox_try_luck"))
-    builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
-    
-    await edit_or_send_message(callback.message, text, builder.as_markup())
-
-
-@router.callback_query(F.data == "fox_vip_buy_rub")
-async def handle_vip_buy_rub(callback: CallbackQuery, session: AsyncSession):
-    """Купить VIP за рубли"""
-    await ensure_db()
-    logger.info(f"[Gamification] fox_vip_buy_rub от {callback.from_user.id}")
-    await callback.answer()
-    
-    from .vip import buy_vip_with_balance
-    
-    result = await buy_vip_with_balance(session, callback.from_user.id)
-    
-    if not result:
-        await callback.answer("❌ Недостаточно средств на балансе!", show_alert=True)
-        return
-    
-    expires_str = result["expires"].strftime("%d.%m.%Y")
-    
-    text = f"""💎 <b>VIP активирован!</b>
-
-✅ Списано: {result["spent"]} ₽
-📅 Действует до: {expires_str}
-
-<b>Теперь тебе доступны:</b>
-• +1 бесплатная попытка в день
-• +10% к шансам на редкие призы
-
-🦊 <i>Лиса благодарит за доверие!</i>
-"""
-    
-    builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🎰 Играть!", callback_data="fox_try_luck"))
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_den"))
     
     await edit_or_send_message(callback.message, text, builder.as_markup())

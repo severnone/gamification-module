@@ -409,11 +409,6 @@ async def play_game(
     from .events import get_happy_hour_boost
     boost_percent += get_happy_hour_boost()
     
-    # VIP бонус
-    from .vip import is_vip, VIP_LUCK_BOOST
-    if await is_vip(session, tg_id):
-        boost_percent += VIP_LUCK_BOOST
-    
     # Выбираем тип игры
     if game_type is None:
         game_type = random.choice(["slots", "chest", "wheel"])
