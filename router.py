@@ -103,6 +103,10 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
     free_spin_text = "✅ Есть" if player.free_spins > 0 else "❌ Нет"
     paid_spins_text = f" + 🛒 {player.paid_spins}" if player.paid_spins > 0 else ""
     
+    # Джекпот
+    from .jackpot import get_jackpot_pool
+    jackpot_pool = await get_jackpot_pool(session)
+    
     # Активные события
     events_text = format_events_text()
     
@@ -110,6 +114,7 @@ async def handle_fox_den(callback: CallbackQuery, session: AsyncSession):
 
 🪙 Лискоины: <b>{player.coins}</b>
 🎫 Ежедневная: <b>{free_spin_text}</b>{paid_spins_text}
+🎰 Джекпот: <b>{jackpot_pool}</b> 🪙
 
 🎮 Игр сыграно: <b>{player.total_games}</b>
 🏆 Выигрышей: <b>{player.total_wins}</b>
@@ -227,6 +232,19 @@ async def run_game(callback: CallbackQuery, session: AsyncSession, game_type: st
         result["coins_spent"],
         result["new_balance"],
     )
+    
+    # Если выиграли джекпот — добавляем к сообщению
+    if result.get("jackpot_win"):
+        jackpot_text = f"""
+
+🎰🎰🎰 <b>ДЖЕКПОТ!!!</b> 🎰🎰🎰
+
+🦊 Лиса в шоке! Ты сорвал банк!
+
+💰 <b>+{result['jackpot_win']}</b> 🪙
+
+🎉🎉🎉"""
+        text = jackpot_text + "\n\n" + text
     
     await msg.edit_text(text, reply_markup=build_after_game_kb(game_type))
 

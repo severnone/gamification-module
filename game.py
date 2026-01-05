@@ -499,6 +499,25 @@ async def play_game(
     except Exception as e:
         logger.warning(f"[Gamification] Ошибка реферального бонуса: {e}")
     
+    # Прогрессивный джекпот
+    jackpot_win = None
+    try:
+        from .jackpot import add_to_jackpot, try_win_jackpot
+        
+        # Добавляем в банк
+        await add_to_jackpot(session)
+        
+        # Проверяем на выигрыш джекпота
+        jackpot_win = await try_win_jackpot(session, tg_id)
+        if jackpot_win:
+            # Выдаём джекпот
+            await update_player_coins(session, tg_id, jackpot_win)
+            player = await get_or_create_player(session, tg_id)
+            new_balance = player.coins
+            logger.info(f"[Gamification] 🎰 ДЖЕКПОТ! {tg_id} выиграл {jackpot_win} 🪙")
+    except Exception as e:
+        logger.warning(f"[Gamification] Ошибка джекпота: {e}")
+    
     logger.info(
         f"[Gamification] Игра {tg_id}: {game_type} [{symbols}] -> {prize.rarity} {prize.prize_type}:{prize.value}"
     )
@@ -511,6 +530,7 @@ async def play_game(
         "symbols": symbols,
         "coins_spent": coins_spent,
         "new_balance": new_balance,
+        "jackpot_win": jackpot_win,
     }
 
 
