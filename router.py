@@ -1,6 +1,7 @@
 from aiogram import F, Router
 from aiogram.types import CallbackQuery, InlineKeyboardButton
 
+from handlers.utils import edit_or_send_message
 from hooks.hooks import register_hook
 
 from .keyboards import build_fox_den_menu
@@ -25,7 +26,8 @@ async def add_fox_den_button(**kwargs):
 @router.callback_query(F.data == "fox:den")
 async def handle_fox_den(callback: CallbackQuery):
     """Главное меню Логова Лисы"""
-    await callback.message.edit_text(
+    await edit_or_send_message(
+        target_message=callback.message,
         text=FOX_DEN_WELCOME,
         reply_markup=build_fox_den_menu(),
     )
