@@ -1284,7 +1284,7 @@ async def handle_casino_menu(callback: CallbackQuery, session: AsyncSession):
         elif reason == "cooldown":
             text = BLOCKED_COOLDOWN.format(**data)
         elif reason == "no_balance":
-            text = BLOCKED_NO_BALANCE.format(min_bet=MIN_BET, **data)
+            text = BLOCKED_NO_BALANCE.format(**data)
         elif reason == "daily_limit":
             text = BLOCKED_DAILY_LIMIT.format(**data)
         elif reason == "daily_games":
@@ -1336,7 +1336,7 @@ async def handle_casino_enter(callback: CallbackQuery, session: AsyncSession):
         elif reason == "cooldown":
             text = BLOCKED_COOLDOWN.format(**data)
         elif reason == "no_balance":
-            text = BLOCKED_NO_BALANCE.format(min_bet=MIN_BET, **data)
+            text = BLOCKED_NO_BALANCE.format(**data)
         elif reason == "daily_limit":
             text = BLOCKED_DAILY_LIMIT.format(**data)
         elif reason == "daily_games":
@@ -1344,7 +1344,7 @@ async def handle_casino_enter(callback: CallbackQuery, session: AsyncSession):
         else:
             text = "❌ Вход заблокирован."
         
-        builder.row(InlineKeyboardButton(text="🔙 Назад", callback_data="fox_casino"))
+        builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
         await edit_or_send_message(callback.message, text, builder.as_markup())
         return
     
@@ -1533,7 +1533,7 @@ async def handle_casino_play(callback: CallbackQuery, session: AsyncSession):
         if streak_text:
             text += f"\n\n{streak_text}"
         
-        builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_enter"))
+        builder.row(InlineKeyboardButton(text="🎲 Ещё раз", callback_data="fox_casino_again"))
         builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
     
     await msg.edit_text(text, reply_markup=builder.as_markup())
@@ -1644,6 +1644,82 @@ async def handle_casino_risk(callback: CallbackQuery, session: AsyncSession):
     builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
     
     await msg.edit_text(text, reply_markup=builder.as_markup())
+
+
+@router.callback_query(F.data == "fox_casino_again")
+async def handle_casino_again(callback: CallbackQuery, session: AsyncSession):
+    """Ещё раз — показываем ставки в том же сообщении"""
+    await ensure_db()
+    tg_id = callback.from_user.id
+    logger.info(f"[Casino] Ещё раз от {tg_id}")
+    await callback.answer()
+    
+    from database.users import get_balance
+    from .casino import (
+        can_enter_casino, FIXED_BETS, get_or_create_casino_profile, 
+        get_streak_text, get_current_jackpot,
+        BLOCKED_NO_BALANCE, BLOCKED_DAILY_LIMIT, BLOCKED_DAILY_GAMES,
+        BLOCKED_COOLDOWN, BLOCKED_FORCED_BREAK, BLOCKED_SELF
+    )
+    
+    can_enter, reason, data = await can_enter_casino(session, tg_id)
+    
+    builder = InlineKeyboardBuilder()
+    
+    if not can_enter:
+        # Показываем причину блокировки со ставками
+        if reason == "self_blocked":
+            text = BLOCKED_SELF.format(**data)
+        elif reason == "forced_break":
+            text = BLOCKED_FORCED_BREAK.format(**data)
+        elif reason == "cooldown":
+            text = BLOCKED_COOLDOWN.format(**data)
+        elif reason == "no_balance":
+            text = BLOCKED_NO_BALANCE.format(**data)
+        elif reason == "daily_limit":
+            text = BLOCKED_DAILY_LIMIT.format(**data)
+        elif reason == "daily_games":
+            text = BLOCKED_DAILY_GAMES.format(**data)
+        else:
+            text = "❌ Вход заблокирован."
+        
+        builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
+        await edit_or_send_message(callback.message, text, builder.as_markup())
+        return
+    
+    # Показываем ставки
+    balance = int(data["balance"])
+    profile = await get_or_create_casino_profile(session, tg_id)
+    jackpot = await get_current_jackpot(session)
+    
+    streak_text = get_streak_text(profile)
+    streak_line = f"\n{streak_text}\n" if streak_text else ""
+    
+    text = f"""🦊 <b>ЛИСЬЕ КАЗИНО</b> 🔞
+
+💰 Баланс: <b>{balance} ₽</b>
+🏆 Джекпот: <b>{jackpot} ₽</b>
+{streak_line}
+Выбери ставку:
+"""
+    
+    row = []
+    for bet in FIXED_BETS:
+        if balance >= bet:
+            row.append(InlineKeyboardButton(text=f"{bet} ₽", callback_data=f"fox_casino_bet_{bet}"))
+    
+    if row:
+        builder.row(*row[:2])
+        if len(row) > 2:
+            builder.row(*row[2:])
+    
+    builder.row(
+        InlineKeyboardButton(text="📊 Статистика", callback_data="fox_casino_stats"),
+        InlineKeyboardButton(text="🔒 Заблокировать", callback_data="fox_casino_self_block"),
+    )
+    builder.row(InlineKeyboardButton(text="🚪 Выйти", callback_data="fox_casino_exit"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
 
 
 @router.callback_query(F.data == "fox_casino_exit")

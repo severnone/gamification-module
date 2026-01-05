@@ -541,7 +541,7 @@ async def can_enter_casino(session: AsyncSession, tg_id: int) -> tuple[bool, str
         remaining = profile.forced_break_until - now
         time_str = format_timedelta(remaining)
         return False, "forced_break", {
-            "streak": profile.current_lose_streak,
+            "streak": FORCED_BREAK_AFTER_LOSSES,  # Показываем сколько проигрышей было, а не текущий (уже сброшенный) счётчик
             "time": time_str
         }
     
