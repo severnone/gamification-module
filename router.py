@@ -1359,9 +1359,13 @@ async def handle_buy_spin(callback: CallbackQuery, session: AsyncSession):
     await edit_or_send_message(callback.message, text, builder.as_markup())
 
 
+# Временное хранилище для покупок VPN дней
+_pending_vpn_purchase: dict[int, dict] = {}  # {tg_id: {"days": int, "cost": int}}
+
+
 @router.callback_query(F.data.startswith("fox_buy_vpn_"))
 async def handle_buy_vpn_days(callback: CallbackQuery, session: AsyncSession):
-    """Обмен лискоинов на дни VPN подписки"""
+    """Покупка дней VPN — показываем выбор подписки"""
     await ensure_db()
     
     # Определяем количество дней и цену
@@ -1376,41 +1380,132 @@ async def handle_buy_vpn_days(callback: CallbackQuery, session: AsyncSession):
         await callback.answer("❌ Неверный товар!", show_alert=True)
         return
     
-    logger.info(f"[Gamification] Покупка {days} дней VPN за {cost} монет от {callback.from_user.id}")
+    tg_id = callback.from_user.id
+    logger.info(f"[Gamification] Покупка {days} дней VPN за {cost} монет от {tg_id}")
     await callback.answer()
     
-    from .db import update_player_coins, add_prize
-    
-    player = await get_or_create_player(session, callback.from_user.id)
+    player = await get_or_create_player(session, tg_id)
     
     if player.coins < cost:
         await callback.answer("❌ Недостаточно Лискоинов!", show_alert=True)
         return
     
+    # Получаем ключи пользователя
+    from database.keys import get_keys
+    keys = await get_keys(session, tg_id)
+    
+    builder = InlineKeyboardBuilder()
+    
+    if not keys:
+        text = f"""🛒 <b>Покупка +{days} дней VPN</b>
+
+❌ У тебя нет активных подписок VPN.
+
+<i>Сначала купи подписку, потом сможешь добавить дни.</i>
+"""
+        builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_upgrades"))
+        await edit_or_send_message(callback.message, text, builder.as_markup())
+        return
+    
+    # Сохраняем информацию о покупке
+    _pending_vpn_purchase[tg_id] = {"days": days, "cost": cost}
+    
+    # Показываем выбор подписки
+    text = f"""🛒 <b>Покупка +{days} дней VPN</b>
+
+💰 Стоимость: <b>{cost}</b> 🦊
+🦊 У тебя: <b>{player.coins}</b> 🦊
+
+<b>Выбери подписку для применения:</b>
+"""
+    
+    from datetime import datetime
+    now = datetime.utcnow().timestamp() * 1000
+    
+    for key in keys:
+        if key.expiry_time > now:
+            days_left = int((key.expiry_time - now) / 1000 / 60 / 60 / 24)
+            status = f"✅ {days_left}д"
+        else:
+            status = "❌ истекла"
+        
+        name = key.alias or key.email or key.client_id[:8]
+        builder.row(InlineKeyboardButton(
+            text=f"{name} ({status})",
+            callback_data=f"fox_buy_vpn_apply_{key.client_id}"
+        ))
+    
+    builder.row(InlineKeyboardButton(text="❌ Отмена", callback_data="fox_upgrades"))
+    
+    await edit_or_send_message(callback.message, text, builder.as_markup())
+
+
+@router.callback_query(F.data.startswith("fox_buy_vpn_apply_"))
+async def handle_buy_vpn_apply(callback: CallbackQuery, session: AsyncSession):
+    """Применить купленные дни VPN к выбранной подписке"""
+    await ensure_db()
+    
+    tg_id = callback.from_user.id
+    client_id = callback.data.replace("fox_buy_vpn_apply_", "")
+    
+    # Проверяем есть ли ожидающая покупка
+    if tg_id not in _pending_vpn_purchase:
+        await callback.answer("❌ Покупка не найдена. Попробуй снова.", show_alert=True)
+        return
+    
+    purchase = _pending_vpn_purchase.pop(tg_id)
+    days = purchase["days"]
+    cost = purchase["cost"]
+    
+    logger.info(f"[Gamification] Применение {days} дней к {client_id} от {tg_id}")
+    await callback.answer()
+    
+    from .db import update_player_coins
+    from database.keys import get_key_by_server, update_key_expiry
+    from datetime import datetime
+    
+    player = await get_or_create_player(session, tg_id)
+    
+    # Проверяем баланс ещё раз
+    if player.coins < cost:
+        await callback.answer("❌ Недостаточно Лискоинов!", show_alert=True)
+        return
+    
+    # Получаем ключ
+    key = await get_key_by_server(session, tg_id, client_id)
+    
+    if not key:
+        await callback.answer("❌ Подписка не найдена!", show_alert=True)
+        return
+    
     # Списываем лискоины
-    await update_player_coins(session, callback.from_user.id, -cost)
+    await update_player_coins(session, tg_id, -cost)
     
-    # Добавляем приз с VPN днями
-    await add_prize(
-        session=session,
-        tg_id=callback.from_user.id,
-        prize_type="vpn_days",
-        value=days,
-        description=f"+{days} дней VPN (куплено)"
-    )
+    # Вычисляем новое время истечения
+    now_ms = datetime.utcnow().timestamp() * 1000
+    current_expiry = max(key.expiry_time, now_ms)  # Если истекла — от текущего момента
+    days_in_ms = days * 24 * 60 * 60 * 1000
+    new_expiry = int(current_expiry + days_in_ms)
     
-    text = f"""✅ <b>Покупка успешна!</b>
+    # Обновляем срок подписки
+    await update_key_expiry(session, client_id, new_expiry)
+    
+    new_days_left = int((new_expiry - now_ms) / 1000 / 60 / 60 / 24)
+    name = key.alias or key.email or client_id[:8]
+    
+    text = f"""✅ <b>Покупка применена!</b>
+
+📦 <b>{name}</b>
+📅 Добавлено: <b>+{days} дней</b>
+⏳ Осталось: <b>{new_days_left} дней</b>
 
 🦊 Списано: <b>-{cost}</b> Лискоинов
-📅 Получено: <b>+{days} дней VPN</b>
-
 🦊 Осталось: <b>{player.coins - cost}</b> Лискоинов
 
-<i>Перейди в «Мои призы» чтобы применить дни к подписке!</i>
+🦊 <i>Приятного использования VPN!</i>
 """
     
     builder = InlineKeyboardBuilder()
-    builder.row(InlineKeyboardButton(text="🎁 Мои призы", callback_data="fox_my_prizes"))
     builder.row(InlineKeyboardButton(text="🛒 Ещё купить", callback_data="fox_upgrades"))
     builder.row(InlineKeyboardButton(text=BTN_BACK, callback_data="fox_try_luck"))
     
